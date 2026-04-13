@@ -1,0 +1,5 @@
+package-as: CrestPlanner
+
+ignore:
+  - README.md
+  - .gitignore
