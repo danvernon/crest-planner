@@ -86,7 +86,7 @@ The **Package and release** workflow runs, uploads to CurseForge, and can attach
 - **Changelog:** paste user-facing notes into the CurseForge file changelog when you publish a new file (the packager uploads the zip; CurseForge is where players read what changed).
 - **Workflow_dispatch:** use only for smoke tests; it does not replace a version bump + tag for a real release.
 
-**Manual run:** **Actions → Package and release → Run workflow** (`workflow_dispatch`) is available for testing once secrets and `## X-Curse-Project-ID` are set.
+**Manual run:** **Actions → Package and release → Run workflow** (`workflow_dispatch`) uploads a **CurseForge Alpha** build from the current `master` tip (useful for smoke tests). **Real releases** should always be done by pushing a `v*` tag (those upload as **CurseForge Release** unless the tag name contains `alpha` / `beta`).
 
 ## License
 
