@@ -503,25 +503,22 @@ local function RenderTrackView(self, trackName)
     if result.discountAlreadyActive then
         row.bar:SetStatusBarColor(0.36, 1, 0.48)
         self.frame.trackView.progressNote:SetText(table.concat({
-            C(COLORS.good, "Discount verified active (achievement)."),
+            C(COLORS.good, "Warband discount active (achievement)."),
             C(COLORS.muted, explanation),
             C(COLORS.muted, cappedLine),
             C(COLORS.value, string.format("Full completion left: %d slots (%d cost).", currentSlotsNeeding, currentFullCost)),
         }, "\n"))
     else
         row.bar:SetStatusBarColor(0.0, 0.82, 0.76)
-        local statusLine
-        if achievementId then
-            statusLine = "Discount not verified active yet."
-        else
-            statusLine = "Achievement ID not configured; cannot verify discount from API."
-        end
-        self.frame.trackView.progressNote:SetText(table.concat({
-            C(COLORS.warn, statusLine),
+        local lines = {
             C(COLORS.muted, explanation),
             C(COLORS.muted, cappedLine),
             C(COLORS.value, string.format("Full completion left: %d slots (%d cost).", currentSlotsNeeding, currentFullCost)),
-        }, "\n"))
+        }
+        if not achievementId then
+            table.insert(lines, 1, C(COLORS.muted, "Achievement ID not set in constants; addon cannot check discount from API."))
+        end
+        self.frame.trackView.progressNote:SetText(table.concat(lines, "\n"))
     end
 end
 

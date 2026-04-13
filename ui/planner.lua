@@ -76,7 +76,6 @@ function Planner:GetWeeklyPreview(allTrackResults)
             local currency = currencyName and balances[currencyName] or nil
             local currentAmount = currency and currency.amount or 0
             local weeklyCap = EffectiveWeeklyCap(currency)
-            local earnedThisWeek = currency and currency.weeklyEarned or 0
             local discountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(trackName)
 
             local remaining = math.max(0, optimal - currentAmount)
@@ -89,35 +88,35 @@ function Planner:GetWeeklyPreview(allTrackResults)
                 weeksForTrack = math.huge
             end
 
-            perTrackWeeks[#perTrackWeeks + 1] = weeksForTrack
+            if optimal > 0 then
+                perTrackWeeks[#perTrackWeeks + 1] = weeksForTrack
 
-            if weeksForTrack ~= math.huge and remaining > 0 and weeklyCap > 0 then
-                if weeksForTrack > worstWeeks then
-                    worstWeeks = weeksForTrack
-                    worstTrackName = trackName
-                    worstRemaining = remaining
-                    worstWeeklyCap = weeklyCap
+                if weeksForTrack ~= math.huge and remaining > 0 and weeklyCap > 0 then
+                    if weeksForTrack > worstWeeks then
+                        worstWeeks = weeksForTrack
+                        worstTrackName = trackName
+                        worstRemaining = remaining
+                        worstWeeklyCap = weeklyCap
+                    end
                 end
-            end
 
-            local weekHint = ""
-            if optimal > 0 and weeksForTrack == math.huge then
-                weekHint = " | cap N/A"
-            elseif optimal > 0 and weeksForTrack > 0 then
-                weekHint = string.format(" | ~%d wk at cap", weeksForTrack)
-            end
+                local weekHint = ""
+                if weeksForTrack == math.huge then
+                    weekHint = " | cap N/A"
+                elseif weeksForTrack > 0 then
+                    weekHint = string.format(" | ~%d wk at cap", weeksForTrack)
+                end
 
-            local linePlain = string.format(
-                "%s: %d held | %d to goal | week %d/%d%s",
-                trackName,
-                currentAmount,
-                optimal,
-                earnedThisWeek,
-                weeklyCap,
-                weekHint
-            )
-            local color = LineColorHex(trackOrder, focusDiscountOrder, discountActive, optimal)
-            perTrackBudgetLines[#perTrackBudgetLines + 1] = string.format("|c%s%s|r", color, linePlain)
+                local linePlain = string.format(
+                    "%s: %d held | %d to goal%s",
+                    trackName,
+                    currentAmount,
+                    optimal,
+                    weekHint
+                )
+                local color = LineColorHex(trackOrder, focusDiscountOrder, discountActive, optimal)
+                perTrackBudgetLines[#perTrackBudgetLines + 1] = string.format("|c%s%s|r", color, linePlain)
+            end
 
             if result.altFirstIsBetter then
                 priorities[#priorities + 1] = {
@@ -183,12 +182,12 @@ function Planner:GetWeeklyPreview(allTrackResults)
         estimatedWeeks = estimatedWeeks,
         overallWeeksLine = overallWeeksLine,
         priorityLines = priorityLines,
-        message = table.concat({
-            "|cff9bb0aeWeek X/Y = earned this week / weekly cap (from API, else "
+        message = #perTrackBudgetLines > 0 and table.concat({
+            "|cff9bb0ae~N wk ≈ weeks to finish that row at weekly cap (API or "
                 .. tostring(Constants.DEFAULT_WEEKLY_CREST_CAP)
-                .. "). ~N wk = weeks to cover that row's \"to goal\" at that cap. Gold = below your next discount tier or discount not verified. Gray = no crests needed.|r",
+                .. "/wk). Gold = work left on a tier before your next discount milestone.|r",
             "",
             table.concat(perTrackBudgetLines, "\n"),
-        }, "\n"),
+        }, "\n") or "|cff9bb0aeNo crest goals left on Veteran–Myth (all rows at 0 to goal).|r",
     }
 end
