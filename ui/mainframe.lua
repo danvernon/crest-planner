@@ -321,20 +321,12 @@ function MainFrame:Create()
     frame.footerTopEdge:SetHeight(1)
     frame.footerTopEdge:SetColorTexture(0, 0.82, 0.76, 0.55)
 
-    local crestIconTexture = nil
-    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
-        local crestCurrencyIds = CrestPlanner.Constants and CrestPlanner.Constants.CREST_CURRENCY_IDS
-        local heroCrestId = crestCurrencyIds and crestCurrencyIds.Gilded
-        if heroCrestId then
-            local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(heroCrestId)
-            crestIconTexture = currencyInfo and currencyInfo.iconFileID or nil
-        end
-    end
+    local addonLogo = "Interface/AddOns/CrestPlanner/Textures/CrestPlannerLogo.tga"
 
     frame.titleIcon = frame:CreateTexture(nil, "ARTWORK")
-    frame.titleIcon:SetPoint("TOPLEFT", 10, -6)
-    frame.titleIcon:SetSize(16, 16)
-    frame.titleIcon:SetTexture(crestIconTexture or "Interface\\Icons\\INV_Misc_Coin_01")
+    frame.titleIcon:SetPoint("TOPLEFT", 8, -3)
+    frame.titleIcon:SetSize(22, 22)
+    frame.titleIcon:SetTexture(addonLogo)
 
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("LEFT", frame.titleIcon, "RIGHT", 6, 0)
