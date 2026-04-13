@@ -87,3 +87,6 @@ Constants.DISCOUNT_ACHIEVEMENT_IDS = {
     Hero = 42769,
     Myth = 42770,
 }
+
+-- When GetCurrencyInfo omits weekly data, assume this earn cap for crest planning (Midnight-era tuning).
+Constants.DEFAULT_WEEKLY_CREST_CAP = 100

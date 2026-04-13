@@ -16,6 +16,8 @@ function Currency:GetCurrentCrestBalances()
         balances[crestName] = {
             amount = info and info.quantity or 0,
             weeklyMax = info and info.maxWeeklyQuantity or 0,
+            weeklyEarned = info and info.quantityEarnedThisWeek or 0,
+            canEarnPerWeek = info and info.canEarnPerWeek or false,
             totalMax = info and info.maxQuantity or 0,
         }
     end

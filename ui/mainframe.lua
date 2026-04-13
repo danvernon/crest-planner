@@ -541,7 +541,7 @@ local function RenderSummaryView(self)
         string.format("%s %s", C(COLORS.muted, "Total saved by optimiser:"), C(COLORS.good, weekly.totalSavings)),
         "",
         SectionHeader("WEEKLY PLANNER"),
-        C(COLORS.value, weekly.message),
+        weekly.message,
         string.format("%s %s", C(COLORS.muted, "Estimated weeks to finish at cap:"), C(COLORS.value, weekly.estimatedWeeks)),
         "",
         SectionHeader("THIS WEEK PRIORITY"),
