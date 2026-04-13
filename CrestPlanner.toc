@@ -1,0 +1,16 @@
+## Interface: 120001, 120005
+## Title: CrestPlanner
+## Notes: Warband crest optimisation planner for retail.
+## Author: Local Dev
+## Version: 0.1.0
+## SavedVariables: CrestPlannerDB
+
+core/constants.lua
+core/utils.lua
+core/scanner.lua
+core/optimiser.lua
+core/currency.lua
+ui/mainframe.lua
+ui/tooltip.lua
+ui/planner.lua
+CrestPlanner.lua
