@@ -57,7 +57,7 @@ This repo uses [BigWigsMods/packager](https://github.com/BigWigsMods/packager) t
 1. **CurseForge project ID**  
    On your addon’s CurseForge page, open **About** (or project settings) and copy the numeric **Project ID**. Add a line to `CrestPlanner.toc` (anywhere with the other `##` headers):
 
-   `## X-Curse-Project-ID: YOUR_ID_HERE`
+   `## X-Curse-Project-ID: 1513294`
 
 2. **CurseForge API key**  
    CurseForge → your profile → **API Tokens** → create a token with upload scope. In the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**  
@@ -77,6 +77,14 @@ This repo uses [BigWigsMods/packager](https://github.com/BigWigsMods/packager) t
    `git push origin v0.1.1`
 
 The **Package and release** workflow runs, uploads to CurseForge, and can attach a GitHub Release.
+
+### Versioning and tag naming (keep the file list clean)
+
+- **One release = one tag.** Tag name must match `## Version` in `CrestPlanner.toc` (e.g. version `0.1.2` → tag `v0.1.2`).
+- Use **annotated** tags only: `git tag -a v0.1.2 -m "0.1.2"` (not lightweight tags).
+- **Never re-use** a tag name. If you pushed a bad tag, delete it on GitHub and locally, then tag again with the next version.
+- **Changelog:** paste user-facing notes into the CurseForge file changelog when you publish a new file (the packager uploads the zip; CurseForge is where players read what changed).
+- **Workflow_dispatch:** use only for smoke tests; it does not replace a version bump + tag for a real release.
 
 **Manual run:** **Actions → Package and release → Run workflow** (`workflow_dispatch`) is available for testing once secrets and `## X-Curse-Project-ID` are set.
 
