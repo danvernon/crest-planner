@@ -53,6 +53,11 @@ function Planner:GetWeeklyPreview(allTrackResults)
 
     local focusDiscountOrder = FirstDiscountTrackOrderNotMet()
 
+    local worstWeeks = 0
+    local worstTrackName
+    local worstRemaining = 0
+    local worstWeeklyCap = 0
+
     for _, trackName in ipairs(TRACK_ORDER) do
         local result = allTrackResults[trackName]
         if result then
@@ -86,13 +91,30 @@ function Planner:GetWeeklyPreview(allTrackResults)
 
             perTrackWeeks[#perTrackWeeks + 1] = weeksForTrack
 
+            if weeksForTrack ~= math.huge and remaining > 0 and weeklyCap > 0 then
+                if weeksForTrack > worstWeeks then
+                    worstWeeks = weeksForTrack
+                    worstTrackName = trackName
+                    worstRemaining = remaining
+                    worstWeeklyCap = weeklyCap
+                end
+            end
+
+            local weekHint = ""
+            if optimal > 0 and weeksForTrack == math.huge then
+                weekHint = " | cap N/A"
+            elseif optimal > 0 and weeksForTrack > 0 then
+                weekHint = string.format(" | ~%d wk at cap", weeksForTrack)
+            end
+
             local linePlain = string.format(
-                "%s: %d held | %d to goal | week %d/%d",
+                "%s: %d held | %d to goal | week %d/%d%s",
                 trackName,
                 currentAmount,
                 optimal,
                 earnedThisWeek,
-                weeklyCap
+                weeklyCap,
+                weekHint
             )
             local color = LineColorHex(trackOrder, focusDiscountOrder, discountActive, optimal)
             perTrackBudgetLines[#perTrackBudgetLines + 1] = string.format("|c%s%s|r", color, linePlain)
@@ -110,14 +132,33 @@ function Planner:GetWeeklyPreview(allTrackResults)
     table.sort(priorities, function(a, b) return a.savings > b.savings end)
 
     local estimatedWeeks = 0
+    local anyUnknownCap = false
     for _, weeks in ipairs(perTrackWeeks) do
         if weeks == math.huge then
-            estimatedWeeks = "N/A"
+            anyUnknownCap = true
             break
         end
         if weeks > estimatedWeeks then
             estimatedWeeks = weeks
         end
+    end
+    if anyUnknownCap then
+        estimatedWeeks = "N/A"
+    end
+
+    local overallWeeksLine
+    if estimatedWeeks == "N/A" then
+        overallWeeksLine = "N/A (weekly cap unknown for at least one crest)"
+    elseif worstTrackName and worstWeeks > 0 then
+        overallWeeksLine = string.format(
+            "~%d wk: %s is the slowest (%d crest left at %d/wk). Other rows show each track on its own.",
+            worstWeeks,
+            worstTrackName,
+            worstRemaining,
+            worstWeeklyCap
+        )
+    else
+        overallWeeksLine = "0 (no crest cost left)"
     end
 
     local priorityLines = {}
@@ -140,11 +181,12 @@ function Planner:GetWeeklyPreview(allTrackResults)
         totalMainFirstCost = totalMainFirstCost,
         totalSavings = totalSavings,
         estimatedWeeks = estimatedWeeks,
+        overallWeeksLine = overallWeeksLine,
         priorityLines = priorityLines,
         message = table.concat({
             "|cff9bb0aeWeek X/Y = earned this week / weekly cap (from API, else "
                 .. tostring(Constants.DEFAULT_WEEKLY_CREST_CAP)
-                .. "). Gold = below your next discount tier or discount not verified. Gray = no crests needed on that track.|r",
+                .. "). ~N wk = weeks to cover that row's \"to goal\" at that cap. Gold = below your next discount tier or discount not verified. Gray = no crests needed.|r",
             "",
             table.concat(perTrackBudgetLines, "\n"),
         }, "\n"),

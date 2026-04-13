@@ -542,7 +542,7 @@ local function RenderSummaryView(self)
         "",
         SectionHeader("WEEKLY PLANNER"),
         weekly.message,
-        string.format("%s %s", C(COLORS.muted, "Estimated weeks to finish at cap:"), C(COLORS.value, weekly.estimatedWeeks)),
+        string.format("%s %s", C(COLORS.muted, "Overall timeline:"), C(COLORS.value, weekly.overallWeeksLine or weekly.estimatedWeeks)),
         "",
         SectionHeader("THIS WEEK PRIORITY"),
         table.concat(weekly.priorityLines, "\n"),
