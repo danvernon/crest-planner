@@ -3,6 +3,7 @@
 ## Notes: Warband crest optimisation planner for retail.
 ## Author: Local Dev
 ## Version: 0.1.1
+## X-Curse-Project-ID: 1513294
 ## SavedVariables: CrestPlannerDB
 
 core/constants.lua
