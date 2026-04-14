@@ -81,7 +81,7 @@ local function EnsureTrackWidgets(frame)
     row.bar:SetSize(160, 12)
     row.bar:SetMinMaxValues(0, 1)
     row.bar:SetValue(0)
-    row.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    row.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
     row.bar:GetStatusBarTexture():SetHorizTile(false)
     row.bar.bg = row.bar:CreateTexture(nil, "BACKGROUND")
     row.bar.bg:SetAllPoints()
@@ -269,6 +269,181 @@ local function BuildActionText(trackResult)
     return table.concat(LimitLines(lines, 6), "\n")
 end
 
+local function BuildWarbandVisualData(allTrackResults)
+    local preferredTracks = { "Champion", "Hero", "Myth" }
+    local visibleTracks = {}
+    local characterMap = {}
+
+    for _, trackName in ipairs(preferredTracks) do
+        local result = allTrackResults[trackName]
+        if result and (result.remainingMainSlots or 0) > 0 then
+            visibleTracks[#visibleTracks + 1] = trackName
+        end
+    end
+    if #visibleTracks == 0 then
+        for _, trackName in ipairs(preferredTracks) do
+            if allTrackResults[trackName] then
+                visibleTracks[#visibleTracks + 1] = trackName
+            end
+        end
+    end
+
+    for _, trackName in ipairs(visibleTracks) do
+        local result = allTrackResults[trackName]
+        for _, row in ipairs((result and result.warbandRows) or {}) do
+            local key = string.format("%s-%s", row.name or "Unknown", row.realm or "UnknownRealm")
+            if not characterMap[key] then
+                characterMap[key] = {
+                    key = key,
+                    name = row.name or "Unknown",
+                    realm = row.realm or "UnknownRealm",
+                    isMain = row.isMain == true,
+                    perTrack = {},
+                }
+            end
+            characterMap[key].isMain = characterMap[key].isMain or row.isMain == true
+            characterMap[key].perTrack[trackName] = row
+        end
+    end
+
+    local chars = {}
+    for _, entry in pairs(characterMap) do
+        chars[#chars + 1] = entry
+    end
+    table.sort(chars, function(a, b)
+        if a.isMain ~= b.isMain then
+            return a.isMain
+        end
+        return a.name < b.name
+    end)
+
+    return visibleTracks, chars
+end
+
+local function EnsureSummaryWidgets(frame)
+    if frame.summaryView then
+        return
+    end
+
+    frame.summaryView = CreateFrame("Frame", nil, frame)
+    frame.summaryView:SetPoint("TOPLEFT", 16, -122)
+    frame.summaryView:SetSize(720, 130)
+    frame.summaryView:Hide()
+
+    frame.summaryView.title = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.summaryView.title:SetPoint("TOPLEFT", 0, 0)
+    frame.summaryView.title:SetText(C(COLORS.section, "WARBAND VISUAL"))
+
+    frame.summaryView.legend = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.summaryView.legend:SetPoint("TOPLEFT", 0, -18)
+    frame.summaryView.legend:SetText(C(COLORS.muted, "Legend: flat bar = capped/known for each track; cost is full finish crest."))
+
+    frame.summaryView.rows = {}
+end
+
+local function EnsureSummaryRow(parent, rowIndex)
+    if parent.rows[rowIndex] then
+        return parent.rows[rowIndex]
+    end
+
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(712, 22)
+    row:SetPoint("TOPLEFT", 0, -36 - ((rowIndex - 1) * 24))
+
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.name:SetPoint("LEFT", 0, 0)
+    row.name:SetWidth(205)
+    row.name:SetJustifyH("LEFT")
+
+    row.cells = {}
+    parent.rows[rowIndex] = row
+    return row
+end
+
+local function EnsureSummaryCell(row, cellIndex)
+    if row.cells[cellIndex] then
+        return row.cells[cellIndex]
+    end
+
+    local cell = CreateFrame("Frame", nil, row)
+    cell:SetSize(166, 20)
+    cell:SetPoint("LEFT", 214 + ((cellIndex - 1) * 166), 0)
+
+    cell.track = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cell.track:SetPoint("LEFT", 0, 0)
+    cell.track:SetWidth(18)
+    cell.track:SetJustifyH("LEFT")
+
+    cell.bar = CreateFrame("StatusBar", nil, cell)
+    cell.bar:SetPoint("LEFT", 20, 0)
+    cell.bar:SetSize(84, 10)
+    cell.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    cell.bar:SetStatusBarColor(0.0, 0.82, 0.76)
+    cell.bar.bg = cell.bar:CreateTexture(nil, "BACKGROUND")
+    cell.bar.bg:SetAllPoints()
+    cell.bar.bg:SetColorTexture(0.08, 0.1, 0.13, 0.9)
+
+    cell.value = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cell.value:SetPoint("LEFT", cell.bar, "RIGHT", 4, 0)
+    cell.value:SetWidth(30)
+    cell.value:SetJustifyH("LEFT")
+
+    cell.cost = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cell.cost:SetPoint("LEFT", cell.value, "RIGHT", 4, 0)
+    cell.cost:SetWidth(28)
+    cell.cost:SetJustifyH("LEFT")
+
+    row.cells[cellIndex] = cell
+    return cell
+end
+
+local function RenderWarbandVisualBars(self, allTrackResults)
+    EnsureSummaryWidgets(self.frame)
+    local summaryView = self.frame.summaryView
+    summaryView:Show()
+
+    local visibleTracks, chars = BuildWarbandVisualData(allTrackResults)
+    if #visibleTracks == 0 or #chars == 0 then
+        summaryView.legend:SetText(C(COLORS.muted, "No warband track data available yet."))
+        for _, row in ipairs(summaryView.rows) do
+            row:Hide()
+        end
+        return
+    end
+
+    summaryView.legend:SetText(C(COLORS.muted, "Legend: flat bar = capped/known for each track; cost is full finish crest."))
+
+    local shortTrack = { Champion = "Ch", Hero = "H", Myth = "M" }
+    for rowIndex, char in ipairs(chars) do
+        local row = EnsureSummaryRow(summaryView, rowIndex)
+        local marker = char.isMain and C(COLORS.good, " [CURRENT]") or ""
+        row.name:SetText(string.format("%s (%s)%s", char.name, char.realm, marker))
+        row:Show()
+
+        for cellIndex, trackName in ipairs(visibleTracks) do
+            local cell = EnsureSummaryCell(row, cellIndex)
+            local data = char.perTrack[trackName]
+            local known = math.max(1, (data and data.knownSlots) or (data and data.totalSlots) or 1)
+            local atMax = math.min(known, (data and data.slotsAtMax) or 0)
+            local cost = (data and data.crestNeeded) or 0
+            cell.track:SetText(C(COLORS.muted, shortTrack[trackName] or trackName:sub(1, 1)))
+            cell.bar:SetMinMaxValues(0, known)
+            cell.bar:SetValue(atMax)
+            cell.value:SetText(C(COLORS.value, string.format("%d/%d", atMax, known)))
+            cell.cost:SetText(C(COLORS.warn, tostring(cost)))
+            cell:Show()
+        end
+
+        for cellIndex = #visibleTracks + 1, #row.cells do
+            row.cells[cellIndex]:Hide()
+        end
+    end
+
+    for rowIndex = #chars + 1, #summaryView.rows do
+        summaryView.rows[rowIndex]:Hide()
+    end
+end
+
 function MainFrame:Create()
     if self.frame then
         return
@@ -321,9 +496,14 @@ function MainFrame:Create()
     frame.footerTopEdge:SetHeight(1)
     frame.footerTopEdge:SetColorTexture(0, 0.82, 0.76, 0.55)
 
-    local addonLogo = "Interface/AddOns/CrestPlanner/Textures/CrestPlannerLogo.tga"
+    local addonLogo = "Interface\\AddOns\\CrestPlanner\\Textures\\CrestPlannerLogo.tga"
 
-    frame.titleIcon = frame:CreateTexture(nil, "ARTWORK")
+    frame.titleIconFallback = frame:CreateTexture(nil, "ARTWORK")
+    frame.titleIconFallback:SetPoint("TOPLEFT", 8, -3)
+    frame.titleIconFallback:SetSize(22, 22)
+    frame.titleIconFallback:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+
+    frame.titleIcon = frame:CreateTexture(nil, "OVERLAY")
     frame.titleIcon:SetPoint("TOPLEFT", 8, -3)
     frame.titleIcon:SetSize(22, 22)
     frame.titleIcon:SetTexture(addonLogo)
@@ -424,6 +604,9 @@ local function RenderTrackView(self, trackName)
     EnsureTrackWidgets(self.frame)
 
     self.frame.body:Hide()
+    if self.frame.summaryView then
+        self.frame.summaryView:Hide()
+    end
     self.frame.trackView:Show()
 
     local rows = {}
@@ -529,6 +712,7 @@ local function RenderSummaryView(self)
     if self.frame.trackView then
         self.frame.trackView:Hide()
     end
+    RenderWarbandVisualBars(self, allTrackResults)
     self.frame.body:Show()
 
     self.frame.body:SetText(table.concat({
@@ -536,6 +720,11 @@ local function RenderSummaryView(self)
         string.format("%s %s", C(COLORS.muted, "Current-first total:"), C(COLORS.value, weekly.totalMainFirstCost)),
         string.format("%s %s", C(COLORS.muted, "Optimal ordering total:"), C(COLORS.value, weekly.totalOptimalCost)),
         string.format("%s %s", C(COLORS.muted, "Total saved by optimiser:"), C(COLORS.good, weekly.totalSavings)),
+        "",
+        "",
+        "",
+        "",
+        "",
         "",
         SectionHeader("WEEKLY PLANNER"),
         weekly.message,
