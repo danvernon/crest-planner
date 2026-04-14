@@ -97,6 +97,52 @@ local function EstimateItemMaxCost(trackName, currentRank, maxRank)
     return total
 end
 
+local function IsItemAtLeastAsProgressed(lhs, rhs)
+    if not lhs or not rhs then
+        return false
+    end
+
+    local lhsOrder = TrackOrder(lhs.trackName)
+    local rhsOrder = TrackOrder(rhs.trackName)
+    if not lhsOrder or not rhsOrder then
+        return false
+    end
+
+    if lhsOrder ~= rhsOrder then
+        return lhsOrder > rhsOrder
+    end
+
+    local lhsMax = lhs.maxRank or 0
+    local rhsMax = rhs.maxRank or 0
+    local lhsRank = lhs.currentRank or 0
+    local rhsRank = rhs.currentRank or 0
+
+    if lhsMax > 0 and rhsMax > 0 and lhsRank >= lhsMax and rhsRank < rhsMax then
+        return true
+    end
+    if lhsMax > 0 and rhsMax > 0 and lhsRank < lhsMax and rhsRank >= rhsMax then
+        return false
+    end
+
+    return lhsRank >= rhsRank
+end
+
+local function BagItemAlreadyCoveredByEquipped(character, bagItem)
+    if not character or not bagItem then
+        return false
+    end
+
+    for _, slotName in ipairs(bagItem.slotOptions or {}) do
+        for _, equippedItem in pairs(character.equipped or {}) do
+            if equippedItem.slotName == slotName and IsItemAtLeastAsProgressed(equippedItem, bagItem) then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 function Tooltip:AppendUpgradeInfo(tooltip, data)
     local itemLink = ResolveItemLink(tooltip, data)
     if not itemLink then
@@ -111,16 +157,19 @@ function Tooltip:AppendUpgradeInfo(tooltip, data)
     end
 
     local trackName, currentRank, maxRank, itemLevel
-    local function MatchItem(collection)
+    local function MatchItem(collection, source)
         for _, item in pairs(collection or {}) do
             if item.itemLink == itemLink then
-                return item
+                return item, source
             end
         end
-        return nil
+        return nil, nil
     end
 
-    local matched = MatchItem(current.equipped) or MatchItem(current.bagItems)
+    local matched, matchedSource = MatchItem(current.equipped, "equipped")
+    if not matched then
+        matched, matchedSource = MatchItem(current.bagItems, "bag")
+    end
     if matched then
         trackName = matched.trackName
         currentRank = matched.currentRank
@@ -170,6 +219,7 @@ function Tooltip:AppendUpgradeInfo(tooltip, data)
     local baseCost = EstimateItemMaxCost(trackName, currentRank, maxRank)
     local discounted = math.floor(baseCost * (1 - CrestPlanner.Constants.DISCOUNT_RATE) + 0.5)
     local isComplete = (maxRank or 0) > 0 and (currentRank or 0) >= (maxRank or 0)
+    local bagCoveredByEquipped = matchedSource == "bag" and BagItemAlreadyCoveredByEquipped(current, matched)
 
     tooltip:AddLine(" ")
     tooltip:AddLine(string.format("CrestPlanner: %s %d/%d", trackName, currentRank, maxRank), 0.35, 0.8, 1)
@@ -183,7 +233,11 @@ function Tooltip:AppendUpgradeInfo(tooltip, data)
     local shortCost
     local statusColor = { 0.2, 1, 0.2 } -- default green
 
-    if targetTrack and targetOrder and itemOrder then
+    if bagCoveredByEquipped then
+        shortStatus = "Already covered by equipped item for this slot"
+        shortCost = nil
+        statusColor = { 0.2, 1, 0.2 }
+    elseif targetTrack and targetOrder and itemOrder then
         if itemOrder < targetOrder then
             if itemTrackComplete then
                 shortStatus = string.format("Complete for %s, below %s", trackName, targetTrack)
@@ -234,7 +288,11 @@ function Tooltip:AppendUpgradeInfo(tooltip, data)
 
     -- Decision hint: if another character is currently the cheaper path for this track,
     -- warn before spending on the viewed character.
-    if trackName and trackName ~= "Unknown" and CrestPlanner.Optimiser and CrestPlanner.Optimiser.EvaluateTrack then
+    if trackName and trackName ~= "Unknown"
+        and baseCost > 0
+        and not bagCoveredByEquipped
+        and CrestPlanner.Optimiser
+        and CrestPlanner.Optimiser.EvaluateTrack then
         local trackResult = GetCachedTrackResult(trackName)
         local currentName = UnitName("player") or "Current"
         if trackResult
