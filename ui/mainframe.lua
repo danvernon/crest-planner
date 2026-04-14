@@ -136,11 +136,6 @@ local function RefreshTabVisibility(self)
     local visibleTabs = {}
     for index, tabName in ipairs(TAB_ORDER) do
         local shouldShow = true
-        if IsTrackTab(tabName) then
-            local result = GetTrackResult(self, tabName)
-            shouldShow = (result.remainingMainSlots or 0) > 0
-        end
-
         local tab = self.frame.tabs[index]
         if shouldShow then
             tab:Show()
@@ -270,7 +265,7 @@ local function BuildActionText(trackResult)
 end
 
 local function BuildWarbandVisualData(allTrackResults)
-    local preferredTracks = { "Champion", "Hero", "Myth" }
+    local preferredTracks = { "Veteran", "Champion", "Hero", "Myth" }
     local visibleTracks = {}
     local characterMap = {}
 
@@ -326,7 +321,7 @@ local function EnsureSummaryWidgets(frame)
     end
 
     frame.summaryView = CreateFrame("Frame", nil, frame)
-    frame.summaryView:SetPoint("TOPLEFT", 16, -122)
+    frame.summaryView:SetPoint("TOPLEFT", 16, -126)
     frame.summaryView:SetSize(720, 130)
     frame.summaryView:Hide()
 
@@ -337,6 +332,10 @@ local function EnsureSummaryWidgets(frame)
     frame.summaryView.legend = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.summaryView.legend:SetPoint("TOPLEFT", 0, -18)
     frame.summaryView.legend:SetText(C(COLORS.muted, "Legend: flat bar = capped/known for each track; cost is full finish crest."))
+
+    frame.summaryView.overflow = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.summaryView.overflow:SetPoint("TOPLEFT", 0, -40)
+    frame.summaryView.overflow:SetText("")
 
     frame.summaryView.rows = {}
 end
@@ -352,8 +351,9 @@ local function EnsureSummaryRow(parent, rowIndex)
 
     row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     row.name:SetPoint("LEFT", 0, 0)
-    row.name:SetWidth(205)
+    row.name:SetWidth(230)
     row.name:SetJustifyH("LEFT")
+    row.name:SetWordWrap(false)
 
     row.cells = {}
     parent.rows[rowIndex] = row
@@ -366,17 +366,17 @@ local function EnsureSummaryCell(row, cellIndex)
     end
 
     local cell = CreateFrame("Frame", nil, row)
-    cell:SetSize(166, 20)
-    cell:SetPoint("LEFT", 214 + ((cellIndex - 1) * 166), 0)
+    cell:SetSize(150, 20)
+    cell:SetPoint("LEFT", 238 + ((cellIndex - 1) * 150), 0)
 
     cell.track = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     cell.track:SetPoint("LEFT", 0, 0)
-    cell.track:SetWidth(18)
+    cell.track:SetWidth(20)
     cell.track:SetJustifyH("LEFT")
 
     cell.bar = CreateFrame("StatusBar", nil, cell)
     cell.bar:SetPoint("LEFT", 20, 0)
-    cell.bar:SetSize(84, 10)
+    cell.bar:SetSize(72, 10)
     cell.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
     cell.bar:SetStatusBarColor(0.0, 0.82, 0.76)
     cell.bar.bg = cell.bar:CreateTexture(nil, "BACKGROUND")
@@ -390,7 +390,7 @@ local function EnsureSummaryCell(row, cellIndex)
 
     cell.cost = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     cell.cost:SetPoint("LEFT", cell.value, "RIGHT", 4, 0)
-    cell.cost:SetWidth(28)
+    cell.cost:SetWidth(32)
     cell.cost:SetJustifyH("LEFT")
 
     row.cells[cellIndex] = cell
@@ -404,24 +404,47 @@ local function RenderWarbandVisualBars(self, allTrackResults)
 
     local visibleTracks, chars = BuildWarbandVisualData(allTrackResults)
     if #visibleTracks == 0 or #chars == 0 then
+        summaryView:SetHeight(56)
         summaryView.legend:SetText(C(COLORS.muted, "No warband track data available yet."))
+        summaryView.overflow:SetText("")
         for _, row in ipairs(summaryView.rows) do
             row:Hide()
         end
-        return
+        return 0
     end
 
-    summaryView.legend:SetText(C(COLORS.muted, "Legend: flat bar = capped/known for each track; cost is full finish crest."))
+    local maxVisibleRows = 5
+    local shownRows = math.min(maxVisibleRows, #chars)
+    local hiddenRows = math.max(0, #chars - shownRows)
 
-    local shortTrack = { Champion = "Ch", Hero = "H", Myth = "M" }
-    for rowIndex, char in ipairs(chars) do
+    summaryView.legend:SetText(C(COLORS.muted, "Legend: V/Ch/H/M = Veteran/Champion/Hero/Myth. Flat bar = capped/known; cost = full crest finish."))
+    if hiddenRows > 0 then
+        summaryView.overflow:SetText(C(COLORS.muted, string.format("Showing %d of %d characters (+%d more).", shownRows, #chars, hiddenRows)))
+    else
+        summaryView.overflow:SetText("")
+    end
+    summaryView:SetHeight(36 + (shownRows * 24) + (hiddenRows > 0 and 18 or 0) + 8)
+
+    local shortTrack = { Veteran = "V", Champion = "Ch", Hero = "H", Myth = "M" }
+    for rowIndex = 1, shownRows do
+        local char = chars[rowIndex]
         local row = EnsureSummaryRow(summaryView, rowIndex)
         local marker = char.isMain and C(COLORS.good, " [CURRENT]") or ""
-        row.name:SetText(string.format("%s (%s)%s", char.name, char.realm, marker))
+        row.name:SetText(string.format("%s%s", char.name, marker))
         row:Show()
+
+        local cellStartX = 238
+        local cellGap = 14
+        local availableWidth = row:GetWidth() - cellStartX
+        local count = math.max(1, #visibleTracks)
+        local cellWidth = math.max(106, math.floor((availableWidth - (cellGap * (count - 1))) / count))
 
         for cellIndex, trackName in ipairs(visibleTracks) do
             local cell = EnsureSummaryCell(row, cellIndex)
+            cell:ClearAllPoints()
+            cell:SetPoint("LEFT", cellStartX + ((cellIndex - 1) * (cellWidth + cellGap)), 0)
+            cell:SetWidth(cellWidth)
+            cell.bar:SetWidth(math.max(40, cellWidth - 88))
             local data = char.perTrack[trackName]
             local known = math.max(1, (data and data.knownSlots) or (data and data.totalSlots) or 1)
             local atMax = math.min(known, (data and data.slotsAtMax) or 0)
@@ -439,9 +462,11 @@ local function RenderWarbandVisualBars(self, allTrackResults)
         end
     end
 
-    for rowIndex = #chars + 1, #summaryView.rows do
+    for rowIndex = shownRows + 1, #summaryView.rows do
         summaryView.rows[rowIndex]:Hide()
     end
+
+    return shownRows + (hiddenRows > 0 and 1 or 0)
 end
 
 function MainFrame:Create()
@@ -712,8 +737,14 @@ local function RenderSummaryView(self)
     if self.frame.trackView then
         self.frame.trackView:Hide()
     end
-    RenderWarbandVisualBars(self, allTrackResults)
+    local renderedWarbandRows = RenderWarbandVisualBars(self, allTrackResults)
     self.frame.body:Show()
+
+    local spacer = {}
+    local spacerLines = math.max(10, 7 + ((renderedWarbandRows or 0) * 3))
+    for _ = 1, spacerLines do
+        spacer[#spacer + 1] = ""
+    end
 
     self.frame.body:SetText(table.concat({
         SectionHeader("SUMMARY ACROSS ALL TRACKS"),
@@ -721,11 +752,7 @@ local function RenderSummaryView(self)
         string.format("%s %s", C(COLORS.muted, "Optimal ordering total:"), C(COLORS.value, weekly.totalOptimalCost)),
         string.format("%s %s", C(COLORS.muted, "Total saved by optimiser:"), C(COLORS.good, weekly.totalSavings)),
         "",
-        "",
-        "",
-        "",
-        "",
-        "",
+        table.concat(spacer, "\n"),
         SectionHeader("WEEKLY PLANNER"),
         weekly.message,
         string.format("%s %s", C(COLORS.muted, "Overall timeline:"), C(COLORS.value, weekly.overallWeeksLine or weekly.estimatedWeeks)),

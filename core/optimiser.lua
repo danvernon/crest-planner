@@ -335,6 +335,59 @@ local function CalculateMainCost(trackName, discountActive)
     return totalCost, remainingSlots, unknownIgnored, belowTrackSlots, actions
 end
 
+local function ThresholdUnlockPlanForCharacter(character, characterName, trackName)
+    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName] or 0
+    if threshold <= 0 then
+        return 0, {}
+    end
+
+    local candidates = {}
+    local unknownIgnored = 0
+    local belowTrackCandidates = 0
+    local completeCount = 0
+
+    local plans = BuildSlotPlans(character, trackName, false)
+    for _, plan in ipairs(plans) do
+        local item = plan.item
+        local status, itemCost, isBelowTrack = plan.status, plan.cost, plan.isBelowTrack
+        if status == "complete" then
+            completeCount = completeCount + 1
+        elseif status == "needs" then
+            candidates[#candidates + 1] = {
+                characterName = characterName or "Unknown",
+                slotName = plan.slotName or item.slotName,
+                cost = itemCost,
+                source = plan.source,
+            }
+            if isBelowTrack then
+                belowTrackCandidates = belowTrackCandidates + 1
+            end
+        elseif status == "unknown" then
+            unknownIgnored = unknownIgnored + 1
+        end
+    end
+
+    local needed = threshold - completeCount
+    if needed <= 0 then
+        return 0, {}, unknownIgnored, belowTrackCandidates
+    end
+
+    table.sort(candidates, function(a, b) return a.cost < b.cost end)
+
+    local chosen = {}
+    local spend = 0
+    for i = 1, math.min(needed, #candidates) do
+        spend = spend + candidates[i].cost
+        chosen[#chosen + 1] = candidates[i]
+    end
+
+    if #chosen < needed then
+        return math.huge, {}, unknownIgnored, belowTrackCandidates
+    end
+
+    return spend, chosen, unknownIgnored, belowTrackCandidates
+end
+
 local function CheapestAltUnlock(trackName)
     local threshold = Constants.DISCOUNT_THRESHOLDS[trackName] or 0
     if threshold <= 0 then
@@ -342,47 +395,29 @@ local function CheapestAltUnlock(trackName)
     end
 
     local mainKey = MainCharacterKey()
-    local candidates = {}
-    local unknownIgnored = 0
-    local belowTrackCandidates = 0
+    local bestSpend = math.huge
+    local bestChosen = {}
+    local bestUnknownIgnored = 0
+    local bestBelowTrackCandidates = 0
 
     for key, character in pairs(CrestPlanner.Scanner:GetWarbandCharacters()) do
         if key ~= mainKey then
-            local plans = BuildSlotPlans(character, trackName, false)
-            for _, plan in ipairs(plans) do
-                local item = plan.item
-                local status, itemCost, isBelowTrack = plan.status, plan.cost, plan.isBelowTrack
-                if status == "needs" then
-                    candidates[#candidates + 1] = {
-                        characterName = character.name or key,
-                        slotName = plan.slotName or item.slotName,
-                        cost = itemCost,
-                        source = plan.source,
-                    }
-                    if isBelowTrack then
-                        belowTrackCandidates = belowTrackCandidates + 1
-                    end
-                elseif status == "unknown" then
-                    unknownIgnored = unknownIgnored + 1
-                end
+            local characterName = character.name or key
+            local spend, chosen, unknownIgnored, belowTrackCandidates = ThresholdUnlockPlanForCharacter(character, characterName, trackName)
+            if spend < bestSpend then
+                bestSpend = spend
+                bestChosen = chosen
+                bestUnknownIgnored = unknownIgnored
+                bestBelowTrackCandidates = belowTrackCandidates
             end
         end
     end
 
-    table.sort(candidates, function(a, b) return a.cost < b.cost end)
-
-    local chosen = {}
-    local spend = 0
-    for i = 1, math.min(threshold, #candidates) do
-        spend = spend + candidates[i].cost
-        chosen[#chosen + 1] = candidates[i]
+    if bestSpend == math.huge then
+        return math.huge, {}, bestUnknownIgnored, bestBelowTrackCandidates
     end
 
-    if #chosen < threshold then
-        return math.huge, {}, unknownIgnored, belowTrackCandidates
-    end
-
-    return spend, chosen, unknownIgnored, belowTrackCandidates
+    return bestSpend, bestChosen, bestUnknownIgnored, bestBelowTrackCandidates
 end
 
 function Optimiser:IsDiscountAlreadyActive(trackName)
@@ -410,7 +445,7 @@ function Optimiser:EvaluateTrack(trackName)
 
     local altSpend, altActions, unknownAltIgnored, belowTrackCandidates = CheapestAltUnlock(trackName)
 
-    local scenarioA = mainCostNoDiscount
+    local scenarioA = discountAlreadyActive and mainCostDiscounted or mainCostNoDiscount
     local scenarioB
 
     if discountAlreadyActive then

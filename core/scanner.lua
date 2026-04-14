@@ -320,10 +320,11 @@ function Scanner:ScanCurrentCharacter()
     else
         CrestPlannerDB.characters[key].bagItems = CrestPlannerDB.characters[key].bagItems or {}
     end
-    CrestPlannerDB.characters[key].lastScan = time()
+    local now = time()
+    CrestPlannerDB.characters[key].lastScan = now
 
     CrestPlannerDB.meta.lastScannedCharacter = key
-    CrestPlannerDB.meta.lastScanAt = time()
+    CrestPlannerDB.meta.lastScanAt = now
 end
 
 function Scanner:GetWarbandCharacters()

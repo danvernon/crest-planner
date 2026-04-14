@@ -2,7 +2,7 @@
 ## Title: CrestPlanner
 ## Notes: Warband crest optimisation planner for retail.
 ## Author: Local Dev
-## Version: 0.1.3
+## Version: 0.1.4
 ## X-Curse-Project-ID: 1513294
 ## SavedVariables: CrestPlannerDB
 
