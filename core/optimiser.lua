@@ -46,7 +46,23 @@ local function TransitionEquivalentRank(fromTrack, toTrack)
 end
 
 local function EvaluateItemForTargetTrack(item, targetTrackName, discountActive)
-    if not item or not IsKnownTrack(item.trackName) then
+    if not item then
+        return "unknown", 0, false
+    end
+
+    -- If the scanner couldn't parse the track, try to infer from item level.
+    -- This handles crafted gear, PvP items, or items with non-standard tooltips.
+    if not IsKnownTrack(item.trackName) then
+        local inferred = CrestPlanner.Optimiser:InferTrackByItemLevel(item.itemLevel)
+        if inferred and IsKnownTrack(inferred.trackName) then
+            local inferredOrder = TrackOrder(inferred.trackName)
+            local targetOrder = TrackOrder(targetTrackName)
+            if inferredOrder and targetOrder and inferredOrder >= targetOrder then
+                -- Item level suggests this item is at or above the target track,
+                -- treat it as complete (we can't know its exact rank, so assume capped).
+                return "complete", 0, false
+            end
+        end
         return "unknown", 0, false
     end
 
@@ -77,8 +93,11 @@ local function EvaluateItemForTargetTrack(item, targetTrackName, discountActive)
     if targetOrder - itemOrder == 1 then
         startRank = TransitionEquivalentRank(item.trackName, targetTrackName) or 1
     elseif itemIsTrackMaxed then
-        -- For maxed lower-track items (e.g. Veteran 6/6 while targeting Hero),
-        -- apply the same handoff baseline so target-track spend starts from rank 2.
+        -- Simplification for multi-gap transitions (e.g. Veteran 6/6 → Hero):
+        -- We use a flat rank-2 baseline rather than chaining through each intermediate
+        -- track (Vet 6/6 → Champ 2/6 → Champ 6/6 → Hero 2/6). This slightly undersells
+        -- the real cost but avoids recursive chain calculation. Acceptable because
+        -- multi-gap items are rare in practice (players upgrade sequentially).
         startRank = 2
     end
     return "needs", CostFromRank(targetTrackName, startRank, targetMax, discountActive), true
@@ -189,6 +208,10 @@ local function BuildTrackData(trackName)
     local mainKey = MainCharacterKey()
     local rows = {}
 
+    -- If the warband discount is already active for this track, price all
+    -- characters' upgrade costs at the discounted rate (it's warband-wide).
+    local discountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(trackName)
+
     for key, character in pairs(characters) do
         local slotsAtMax = 0
         local slotsNeeding = 0
@@ -198,7 +221,7 @@ local function BuildTrackData(trackName)
         local unknownSlots = 0
         local belowTrackSlots = 0
 
-        local plans = BuildSlotPlans(character, trackName, false)
+        local plans = BuildSlotPlans(character, trackName, discountActive)
         for _, plan in ipairs(plans) do
             local item = plan.item
             totalSlots = totalSlots + 1
@@ -225,6 +248,7 @@ local function BuildTrackData(trackName)
             name = character.name or key,
             realm = character.realm or "UnknownRealm",
             classFileName = character.classFileName or "UNKNOWN",
+            level = character.level or 0,
             isMain = key == mainKey,
             slotsAtMax = slotsAtMax,
             slotsNeeding = slotsNeeding,
@@ -241,12 +265,13 @@ local function BuildTrackData(trackName)
 end
 
 local function CharacterThresholdUnlockCost(character, trackName)
-    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName] or 0
-    if threshold <= 0 then
-        return 0
+    local plans = BuildSlotPlans(character, trackName, false)
+    -- Threshold = all equipped slots (dynamic per character based on weapon type)
+    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName]
+    if not threshold or threshold <= 0 then
+        threshold = #plans
     end
 
-    local plans = BuildSlotPlans(character, trackName, false)
     local completeCount = 0
     local candidateCosts = {}
     for _, plan in ipairs(plans) do
@@ -336,17 +361,16 @@ local function CalculateMainCost(trackName, discountActive)
 end
 
 local function ThresholdUnlockPlanForCharacter(character, characterName, trackName)
-    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName] or 0
-    if threshold <= 0 then
-        return 0, {}
+    local plans = BuildSlotPlans(character, trackName, false)
+    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName]
+    if not threshold or threshold <= 0 then
+        threshold = #plans
     end
 
     local candidates = {}
     local unknownIgnored = 0
     local belowTrackCandidates = 0
     local completeCount = 0
-
-    local plans = BuildSlotPlans(character, trackName, false)
     for _, plan in ipairs(plans) do
         local item = plan.item
         local status, itemCost, isBelowTrack = plan.status, plan.cost, plan.isBelowTrack
@@ -389,11 +413,7 @@ local function ThresholdUnlockPlanForCharacter(character, characterName, trackNa
 end
 
 local function CheapestAltUnlock(trackName)
-    local threshold = Constants.DISCOUNT_THRESHOLDS[trackName] or 0
-    if threshold <= 0 then
-        return 0, {}
-    end
-
+    -- Threshold is resolved per-character inside ThresholdUnlockPlanForCharacter
     local mainKey = MainCharacterKey()
     local bestSpend = math.huge
     local bestChosen = {}
@@ -440,14 +460,23 @@ function Optimiser:EvaluateTrack(trackName)
     local main = CrestPlanner.Scanner:GetWarbandCharacters()[mainKey]
     local mainName = main and main.name or "Main"
 
-    local mainCostNoDiscount, remainingMainSlots, unknownMainIgnored, mainBelowTrackSlots, mainUpgradeActions = CalculateMainCost(trackName, false)
-    local mainCostDiscounted, _, _, _, _ = CalculateMainCost(trackName, true)
+    local mainCostNoDiscount, remainingMainSlotsNoDiscount, unknownMainIgnoredNoDiscount, mainBelowTrackSlotsNoDiscount, mainUpgradeActionsNoDiscount = CalculateMainCost(trackName, false)
+    local mainCostDiscounted, remainingMainSlotsDiscounted, unknownMainIgnoredDiscounted, mainBelowTrackSlotsDiscounted, mainUpgradeActionsDiscounted = CalculateMainCost(trackName, true)
+
+    -- Use discounted actions when the warband discount is active so costs shown
+    -- to the user reflect the actual price they'll pay.
+    local remainingMainSlots = discountAlreadyActive and remainingMainSlotsDiscounted or remainingMainSlotsNoDiscount
+    local unknownMainIgnored = discountAlreadyActive and unknownMainIgnoredDiscounted or unknownMainIgnoredNoDiscount
+    local mainBelowTrackSlots = discountAlreadyActive and mainBelowTrackSlotsDiscounted or mainBelowTrackSlotsNoDiscount
+    local mainUpgradeActions = discountAlreadyActive and mainUpgradeActionsDiscounted or mainUpgradeActionsNoDiscount
 
     local altSpend, altActions, unknownAltIgnored, belowTrackCandidates = CheapestAltUnlock(trackName)
 
+    -- Scenario A: upgrade main at current rate (discount if active, full price if not).
     local scenarioA = discountAlreadyActive and mainCostDiscounted or mainCostNoDiscount
-    local scenarioB
 
+    -- Scenario B: unlock discount via cheapest alt, then upgrade main at discount.
+    local scenarioB
     if discountAlreadyActive then
         scenarioB = mainCostDiscounted
     elseif altSpend == math.huge then
@@ -456,8 +485,62 @@ function Optimiser:EvaluateTrack(trackName)
         scenarioB = altSpend + mainCostDiscounted
     end
 
+    -- Scenario C: main self-unlocks discount by upgrading cheapest slots to threshold,
+    -- then finishes the rest at discount rate. This handles the case where main is
+    -- close to the threshold and self-unlocking is cheaper than diverting to an alt.
+    local scenarioC = math.huge
+    if not discountAlreadyActive and main then
+        local mainUnlockCost = CharacterThresholdUnlockCost(main, trackName)
+        if mainUnlockCost < math.huge then
+            -- After self-unlocking, remaining slots get the discount.
+            -- mainCostDiscounted already prices ALL slots at discount, but the unlock
+            -- slots were paid at full price. Recalculate: unlock slots at full price,
+            -- remaining slots at discount price.
+            local plans = BuildSlotPlans(main, trackName, false)
+            local threshold = Constants.DISCOUNT_THRESHOLDS[trackName]
+            if not threshold or threshold <= 0 then
+                threshold = #plans
+            end
+            local completeCount = 0
+            local needsCosts = {}
+            for _, plan in ipairs(plans) do
+                if plan.status == "complete" then
+                    completeCount = completeCount + 1
+                elseif plan.status == "needs" then
+                    needsCosts[#needsCosts + 1] = plan.cost or 0
+                end
+            end
+            table.sort(needsCosts)
+            local slotsToUnlock = math.max(0, threshold - completeCount)
+            if slotsToUnlock <= #needsCosts then
+                local unlockSpend = 0
+                for i = 1, slotsToUnlock do
+                    unlockSpend = unlockSpend + needsCosts[i]
+                end
+                -- Remaining slots after unlock get discount
+                local remainingSpend = 0
+                for i = slotsToUnlock + 1, #needsCosts do
+                    remainingSpend = remainingSpend + RoundNearest(needsCosts[i] * (1 - Constants.DISCOUNT_RATE))
+                end
+                scenarioC = unlockSpend + remainingSpend
+            end
+        end
+    end
+
+    -- Pick the best scenario
+    local bestScenario = scenarioA
+    if scenarioB < bestScenario then bestScenario = scenarioB end
+    if scenarioC < bestScenario then bestScenario = scenarioC end
+
     local savings = (scenarioA < math.huge and scenarioB < math.huge) and (scenarioA - scenarioB) or 0
-    local altFirstIsBetter = savings > 0
+    local altFirstIsBetter = scenarioB < scenarioA and scenarioB <= scenarioC
+    if altFirstIsBetter then
+        savings = scenarioA - scenarioB
+    elseif scenarioC < scenarioA then
+        -- Main self-unlock is best, treat like main-first but with partial discount
+        savings = 0
+        altFirstIsBetter = false
+    end
 
     local warbandRows = BuildTrackData(trackName)
     local cheapestUnlockCharacter, cheapestUnlockCost, currentUnlockCost = CheapestCharacterForThreshold(trackName)
@@ -470,6 +553,7 @@ function Optimiser:EvaluateTrack(trackName)
         discountAlreadyActive = discountAlreadyActive,
         scenarioA = scenarioA,
         scenarioB = scenarioB,
+        scenarioC = scenarioC,
         savings = savings,
         altFirstIsBetter = altFirstIsBetter,
         mainName = mainName,

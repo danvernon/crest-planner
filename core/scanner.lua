@@ -110,6 +110,37 @@ local function ParseTrackFromText(text)
     return nil
 end
 
+local function TrackRankFromItemLevel(ilvl)
+    if not ilvl or ilvl <= 0 then
+        return nil, 0, 0
+    end
+    local lookup = Constants.ILVL_TO_TRACK_RANK
+    if not lookup then
+        return nil, 0, 0
+    end
+    -- Exact match first
+    for _, entry in ipairs(lookup) do
+        if ilvl >= entry[1] and ilvl <= entry[2] then
+            return entry[3], entry[4], entry[5]
+        end
+    end
+    -- Closest match for ilvls that fall between brackets (e.g. 648 between 645 and 649)
+    local bestEntry
+    local bestDiff = math.huge
+    for _, entry in ipairs(lookup) do
+        local mid = (entry[1] + entry[2]) / 2
+        local diff = math.abs(ilvl - mid)
+        if diff < bestDiff then
+            bestDiff = diff
+            bestEntry = entry
+        end
+    end
+    if bestEntry and bestDiff <= 3 then
+        return bestEntry[3], bestEntry[4], bestEntry[5]
+    end
+    return nil, 0, 0
+end
+
 local function ResolveTrackAndRanks(slotId, itemLink)
     local trackName
     local currentRank
@@ -118,11 +149,28 @@ local function ResolveTrackAndRanks(slotId, itemLink)
 
     if not trackName and C_TooltipInfo and C_TooltipInfo.GetInventoryItem then
         local tooltipData = C_TooltipInfo.GetInventoryItem("player", slotId)
+        if tooltipData then
+            -- SurfaceArgs populates leftText/rightText from the raw tooltip data.
+            -- Without this call, leftText may be nil on modern clients.
+            if TooltipUtil and TooltipUtil.SurfaceArgs then
+                TooltipUtil.SurfaceArgs(tooltipData)
+            end
+        end
         if tooltipData and tooltipData.lines then
             for _, line in ipairs(tooltipData.lines) do
-                local text = line.leftText or line.text or ""
-                if type(text) == "string" and text ~= "" then
-                    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                local texts = {}
+                if type(line.leftText) == "string" and line.leftText ~= "" then
+                    texts[#texts + 1] = line.leftText
+                end
+                if type(line.rightText) == "string" and line.rightText ~= "" then
+                    texts[#texts + 1] = line.rightText
+                end
+                if type(line.text) == "string" and line.text ~= "" and #texts == 0 then
+                    texts[#texts + 1] = line.text
+                end
+
+                for _, raw in ipairs(texts) do
+                    local text = raw:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 
                     if not itemLevel then
                         itemLevel = ParseItemLevelFromText(text)
@@ -136,6 +184,7 @@ local function ResolveTrackAndRanks(slotId, itemLink)
                         break
                     end
                 end
+                if trackName then break end
             end
         end
     end
@@ -166,6 +215,30 @@ local function ResolveTrackAndRanks(slotId, itemLink)
         end
 
         ScanTooltip:Hide()
+    end
+
+    -- Ensure we have an item level even if tooltip parsing missed it.
+    if not itemLevel or itemLevel <= 0 then
+        if GetDetailedItemLevelInfo then
+            itemLevel = GetDetailedItemLevelInfo(itemLink) or 0
+        end
+        if (not itemLevel or itemLevel <= 0) and C_Item and C_Item.GetCurrentItemLevel then
+            local itemLoc = ItemLocation:CreateFromEquipmentSlot(slotId)
+            if itemLoc and itemLoc:IsValid() then
+                itemLevel = C_Item.GetCurrentItemLevel(itemLoc) or 0
+            end
+        end
+    end
+
+    -- Fallback: if tooltip parsing failed but we have an item level, derive track/rank
+    -- from the ilvl bracket table. Handles crafted items and non-standard tooltips.
+    if not trackName and itemLevel and itemLevel > 0 then
+        local inferredTrack, inferredRank, inferredMax = TrackRankFromItemLevel(itemLevel)
+        if inferredTrack then
+            trackName = inferredTrack
+            currentRank = inferredRank
+            maxRank = inferredMax
+        end
     end
 
     trackName = trackName or "Unknown"
@@ -211,11 +284,26 @@ local function ParseBagItemTooltip(bagID, slotID, itemLink)
 
     if C_TooltipInfo and C_TooltipInfo.GetBagItem then
         local tooltipData = C_TooltipInfo.GetBagItem(bagID, slotID)
+        if tooltipData then
+            if TooltipUtil and TooltipUtil.SurfaceArgs then
+                TooltipUtil.SurfaceArgs(tooltipData)
+            end
+        end
         if tooltipData and tooltipData.lines then
             for _, line in ipairs(tooltipData.lines) do
-                local text = line.leftText or line.text or ""
-                if type(text) == "string" and text ~= "" then
-                    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                local texts = {}
+                if type(line.leftText) == "string" and line.leftText ~= "" then
+                    texts[#texts + 1] = line.leftText
+                end
+                if type(line.rightText) == "string" and line.rightText ~= "" then
+                    texts[#texts + 1] = line.rightText
+                end
+                if type(line.text) == "string" and line.text ~= "" and #texts == 0 then
+                    texts[#texts + 1] = line.text
+                end
+
+                for _, raw in ipairs(texts) do
+                    local text = raw:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
                     if not itemLevel then
                         itemLevel = ParseItemLevelFromText(text)
                     end
@@ -227,6 +315,7 @@ local function ParseBagItemTooltip(bagID, slotID, itemLink)
                         break
                     end
                 end
+                if trackName then break end
             end
         end
     end
@@ -254,6 +343,15 @@ local function ParseBagItemTooltip(bagID, slotID, itemLink)
                 end
             end
             ScanTooltip:Hide()
+        end
+    end
+
+    if not trackName and itemLevel and itemLevel > 0 then
+        local inferredTrack, inferredRank, inferredMax = TrackRankFromItemLevel(itemLevel)
+        if inferredTrack then
+            trackName = inferredTrack
+            currentRank = inferredRank
+            maxRank = inferredMax
         end
     end
 
@@ -320,11 +418,11 @@ function Scanner:ScanCurrentCharacter()
     else
         CrestPlannerDB.characters[key].bagItems = CrestPlannerDB.characters[key].bagItems or {}
     end
-    local now = time()
-    CrestPlannerDB.characters[key].lastScan = now
+    local scanTime = time()
+    CrestPlannerDB.characters[key].lastScan = scanTime
 
     CrestPlannerDB.meta.lastScannedCharacter = key
-    CrestPlannerDB.meta.lastScanAt = now
+    CrestPlannerDB.meta.lastScanAt = scanTime
 end
 
 function Scanner:GetWarbandCharacters()

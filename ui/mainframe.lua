@@ -4,81 +4,125 @@ local MainFrame = {}
 CrestPlanner.MainFrame = MainFrame
 
 local TAB_ORDER = { "Veteran", "Champion", "Hero", "Myth", "Summary" }
+local Constants = CrestPlanner.Constants
+
 local COLORS = {
-    accent = "ff00d1c1",
-    section = "ff7be3dc",
-    value = "ffffffff",
-    muted = "ff9bb0ae",
-    good = "ff5cff7a",
-    warn = "ffffc857",
+    accent    = "ff00d1c1",
+    section   = "ff7be3dc",
+    value     = "ffffffff",
+    muted     = "ff9bb0ae",
+    good      = "ff5cff7a",
+    warn      = "ffffc857",
+    greenBg   = { 0.13, 0.22, 0.13, 0.95 },
+    amberBg   = { 0.22, 0.18, 0.08, 0.95 },
+    greenAccent = { 0.36, 1.0, 0.48, 0.9 },
+    amberAccent = { 1.0, 0.78, 0.34, 0.9 },
+    cardBg    = { 0.06, 0.08, 0.11, 0.90 },
 }
 
 local function C(hex, text)
     return string.format("|c%s%s|r", hex, text)
 end
 
-local function Divider(char, len)
-    return string.rep(char or "-", len or 56)
+local function FormatNumber(n)
+    if n >= 10000 then
+        local s = tostring(n)
+        return s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+    end
+    return tostring(n)
 end
 
-local function SectionHeader(text)
-    return C(COLORS.section, text) .. "\n" .. C(COLORS.muted, Divider("-", 56))
+local function DiscountPctLabel()
+    local pct = math.floor((Constants.DISCOUNT_RATE or 0.50) * 100 + 0.5)
+    return string.format("%d%%", pct)
 end
 
-local function EnsureTrackWidgets(frame)
-    if frame.trackView then
-        return
+
+---------------------------------------------------------------------------
+-- Shared card background helper
+---------------------------------------------------------------------------
+local function ApplyCardBg(frame, bgColor)
+    if not frame._cardBg then
+        frame._cardBg = frame:CreateTexture(nil, "BACKGROUND")
+        frame._cardBg:SetAllPoints()
+    end
+    local c = bgColor or COLORS.cardBg
+    frame._cardBg:SetColorTexture(c[1], c[2], c[3], c[4])
+end
+
+---------------------------------------------------------------------------
+-- Track view widgets
+---------------------------------------------------------------------------
+local function CreateActionRow(parent, index)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(26)
+    row:SetPoint("TOPLEFT", 12, -62 - ((index - 1) * 28))
+    row:SetPoint("RIGHT", -12, 0)
+
+    row.number = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.number:SetPoint("LEFT", 0, 0)
+    row.number:SetWidth(20)
+    row.number:SetJustifyH("CENTER")
+
+    row.numberBg = row:CreateTexture(nil, "ARTWORK")
+    row.numberBg:SetPoint("CENTER", row.number, "CENTER", 0, 0)
+    row.numberBg:SetSize(22, 22)
+    row.numberBg:SetColorTexture(0.1, 0.1, 0.1, 0.6)
+    row.numberBg:SetDrawLayer("ARTWORK", -1)
+
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.text:SetPoint("LEFT", row.number, "RIGHT", 8, 0)
+    row.text:SetPoint("RIGHT", -120, 0)
+    row.text:SetJustifyH("LEFT")
+
+    row.cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.cost:SetPoint("RIGHT", 0, 0)
+    row.cost:SetWidth(120)
+    row.cost:SetJustifyH("RIGHT")
+
+    return row
+end
+
+local function CreateWarbandCharRow(parent, index)
+    local ROW_HEIGHT = 36
+    local ROW_STRIDE = 44
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", 8, -28 - ((index - 1) * ROW_STRIDE))
+    row:SetPoint("RIGHT", -8, 0)
+
+    -- Faint divider above each row (hidden for first row)
+    row.divider = row:CreateTexture(nil, "ARTWORK")
+    row.divider:SetPoint("TOPLEFT", 0, 4)
+    row.divider:SetPoint("RIGHT", 0, 0)
+    row.divider:SetHeight(1)
+    row.divider:SetColorTexture(0.2, 0.25, 0.28, 0.5)
+    if index == 1 then
+        row.divider:Hide()
     end
 
-    local function CreateCard(parent, x, y, w, h, title)
-        local card = CreateFrame("Frame", nil, parent)
-        card:SetPoint("TOPLEFT", x, y)
-        card:SetSize(w, h)
+    row.classIcon = row:CreateTexture(nil, "ARTWORK")
+    row.classIcon:SetPoint("TOPLEFT", 0, -2)
+    row.classIcon:SetSize(32, 32)
+    row.classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+    row.classIcon:SetTexCoord(0, 0.25, 0, 0.25) -- default, updated at render
 
-        card.bg = card:CreateTexture(nil, "BACKGROUND")
-        card.bg:SetAllPoints()
-        card.bg:SetColorTexture(0.03, 0.05, 0.07, 0.78)
+    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.name:SetPoint("TOPLEFT", row.classIcon, "TOPRIGHT", 8, -2)
+    row.name:SetJustifyH("LEFT")
 
-        card.accent = card:CreateTexture(nil, "ARTWORK")
-        card.accent:SetPoint("TOPLEFT", 0, -1)
-        card.accent:SetPoint("TOPRIGHT", 0, -1)
-        card.accent:SetHeight(2)
-        card.accent:SetColorTexture(0, 0.82, 0.76, 0.9)
+    row.youBadge = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.youBadge:SetPoint("LEFT", row.name, "RIGHT", 6, 0)
+    row.youBadge:SetTextColor(0.36, 1, 0.48)
 
-        card.title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        card.title:SetPoint("TOPLEFT", 8, -8)
-        card.title:SetJustifyH("LEFT")
-        card.title:SetText(C(COLORS.section, title))
-
-        card.text = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        card.text:SetPoint("TOPLEFT", 8, -26)
-        card.text:SetPoint("BOTTOMRIGHT", -8, 8)
-        card.text:SetJustifyH("LEFT")
-        card.text:SetJustifyV("TOP")
-
-        return card
-    end
-
-    frame.trackView = CreateFrame("Frame", nil, frame)
-    frame.trackView:SetPoint("TOPLEFT", 14, -42)
-    frame.trackView:SetPoint("BOTTOMRIGHT", -14, 42)
-
-    frame.trackView.decisionCard = CreateCard(frame.trackView, 0, 0, 328, 118, "DECISION")
-    frame.trackView.actionsCard = CreateCard(frame.trackView, 0, -126, 328, 178, "TOP ACTIONS")
-    frame.trackView.progressCard = CreateCard(frame.trackView, 0, -312, 328, 128, "DISCOUNT PROGRESS")
-    frame.trackView.warbandCard = CreateCard(frame.trackView, 336, 0, 390, 440, "WARBAND")
-    local row = CreateFrame("Frame", nil, frame.trackView.progressCard)
-    row:SetPoint("TOPLEFT", 8, -30)
-    row:SetSize(310, 22)
-
-    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.label:SetPoint("LEFT", 0, 0)
-    row.label:SetWidth(96)
-    row.label:SetJustifyH("LEFT")
+    row.realm = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.realm:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    row.realm:SetPoint("TOP", row.classIcon, "TOP", 0, -2)
+    row.realm:SetJustifyH("RIGHT")
 
     row.bar = CreateFrame("StatusBar", nil, row)
-    row.bar:SetPoint("LEFT", 100, 0)
-    row.bar:SetSize(160, 12)
+    row.bar:SetPoint("TOPLEFT", row.classIcon, "TOPRIGHT", 8, -18)
+    row.bar:SetSize(120, 8)
     row.bar:SetMinMaxValues(0, 1)
     row.bar:SetValue(0)
     row.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
@@ -87,19 +131,272 @@ local function EnsureTrackWidgets(frame)
     row.bar.bg:SetAllPoints()
     row.bar.bg:SetColorTexture(0.08, 0.1, 0.13, 0.9)
 
-    row.value = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.value:SetPoint("LEFT", row.bar, "RIGHT", 6, 0)
-    row.value:SetJustifyH("LEFT")
+    row.ratio = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.ratio:SetPoint("LEFT", row.bar, "RIGHT", 6, 0)
+    row.ratio:SetJustifyH("LEFT")
 
-    frame.trackView.progressRow = row
+    row.costText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.costText:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+    row.costText:SetPoint("BOTTOM", row.classIcon, "BOTTOM", 0, 0)
+    row.costText:SetJustifyH("RIGHT")
 
-    frame.trackView.progressNote = frame.trackView.progressCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.trackView.progressNote:SetPoint("TOPLEFT", 8, -58)
-    frame.trackView.progressNote:SetPoint("RIGHT", -8, 0)
-    frame.trackView.progressNote:SetJustifyH("LEFT")
-    frame.trackView.progressNote:SetJustifyV("TOP")
+    return row
 end
 
+local function CreateDiscountRow(parent, index)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(24)
+    row:SetPoint("TOPLEFT", 10, -28 - ((index - 1) * 30))
+    row:SetPoint("RIGHT", -10, 0)
+
+    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.label:SetPoint("LEFT", 0, 0)
+    row.label:SetWidth(70)
+    row.label:SetJustifyH("LEFT")
+
+    row.bar = CreateFrame("StatusBar", nil, row)
+    row.bar:SetPoint("LEFT", 74, 0)
+    row.bar:SetSize(100, 10)
+    row.bar:SetMinMaxValues(0, 1)
+    row.bar:SetValue(0)
+    row.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+    row.bar:GetStatusBarTexture():SetHorizTile(false)
+    row.bar.bg = row.bar:CreateTexture(nil, "BACKGROUND")
+    row.bar.bg:SetAllPoints()
+    row.bar.bg:SetColorTexture(0.08, 0.1, 0.13, 0.9)
+
+    row.info = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.info:SetPoint("LEFT", row.bar, "RIGHT", 8, 0)
+    row.info:SetPoint("RIGHT", 0, 0)
+    row.info:SetJustifyH("LEFT")
+
+    return row
+end
+
+local function EnsureTrackWidgets(frame)
+    if frame.trackView then
+        return
+    end
+
+    frame.trackView = CreateFrame("Frame", nil, frame)
+    frame.trackView:SetPoint("TOPLEFT", 8, -37)
+    frame.trackView:SetPoint("BOTTOMRIGHT", -8, 37)
+
+    -- Action card
+    local ac = CreateFrame("Frame", nil, frame.trackView)
+    ac:SetPoint("TOPLEFT", 0, 0)
+    ac:SetPoint("RIGHT", 0, 0)
+    ac:SetHeight(180)
+    ApplyCardBg(ac, COLORS.greenBg)
+
+    ac.leftAccent = ac:CreateTexture(nil, "ARTWORK")
+    ac.leftAccent:SetPoint("TOPLEFT", 0, 0)
+    ac.leftAccent:SetPoint("BOTTOMLEFT", 0, 0)
+    ac.leftAccent:SetWidth(4)
+    ac.leftAccent:SetColorTexture(0.36, 1.0, 0.48, 0.9)
+
+    ac.subtitle = ac:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ac.subtitle:SetPoint("TOPLEFT", 14, -12)
+    ac.subtitle:SetJustifyH("LEFT")
+
+    ac.heading = ac:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    ac.heading:SetPoint("TOPLEFT", 14, -30)
+    ac.heading:SetPoint("RIGHT", -14, 0)
+    ac.heading:SetJustifyH("LEFT")
+    ac.heading:SetTextColor(1, 1, 1)
+
+    ac.rows = {}
+    for i = 1, 4 do
+        ac.rows[i] = CreateActionRow(ac, i)
+    end
+
+    frame.trackView.actionCard = ac
+
+    -- Warband card (bottom-left)
+    local wc = CreateFrame("Frame", nil, frame.trackView)
+    wc:SetPoint("TOPLEFT", 0, -190)
+    wc:SetPoint("BOTTOMLEFT", 0, 0)
+    wc:SetWidth(358)
+    ApplyCardBg(wc)
+
+    wc.title = wc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    wc.title:SetPoint("TOPLEFT", 10, -8)
+    wc.title:SetJustifyH("LEFT")
+    wc.title:SetTextColor(0.48, 0.89, 0.86)
+
+    wc.charRows = {}
+    for i = 1, 6 do
+        wc.charRows[i] = CreateWarbandCharRow(wc, i)
+    end
+
+    frame.trackView.warbandCard = wc
+
+    -- Discount card (bottom-right)
+    local dc = CreateFrame("Frame", nil, frame.trackView)
+    dc:SetPoint("TOPLEFT", 366, -190)
+    dc:SetPoint("BOTTOMRIGHT", 0, 0)
+    ApplyCardBg(dc)
+
+    dc.title = dc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    dc.title:SetPoint("TOPLEFT", 10, -8)
+    dc.title:SetJustifyH("LEFT")
+    dc.title:SetText(C(COLORS.section, "DISCOUNT PROGRESS"))
+
+    dc.discountRows = {}
+    for i = 1, 4 do
+        dc.discountRows[i] = CreateDiscountRow(dc, i)
+    end
+
+    dc.tip = dc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    dc.tip:SetPoint("BOTTOMLEFT", 10, 10)
+    dc.tip:SetPoint("RIGHT", -10, 0)
+    dc.tip:SetJustifyH("LEFT")
+    dc.tip:SetJustifyV("BOTTOM")
+
+    frame.trackView.discountCard = dc
+end
+
+---------------------------------------------------------------------------
+-- Summary view widgets
+---------------------------------------------------------------------------
+local function CreateStatCard(parent, xOffset, label)
+    local card = CreateFrame("Frame", nil, parent)
+    card:SetSize(228, 72)
+    card:SetPoint("TOPLEFT", xOffset, 0)
+    ApplyCardBg(card)
+
+    card.label = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    card.label:SetPoint("TOPLEFT", 12, -10)
+    card.label:SetText(C(COLORS.muted, label))
+    card.label:SetJustifyH("LEFT")
+
+    card.value = card:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    card.value:SetPoint("TOPLEFT", 12, -30)
+    card.value:SetJustifyH("LEFT")
+    card.value:SetTextColor(1, 1, 1)
+
+    return card
+end
+
+local function CreateOutlookRow(parent, index)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(46)
+    row:SetPoint("TOPLEFT", 10, -28 - ((index - 1) * 50))
+    row:SetPoint("RIGHT", -10, 0)
+
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetPoint("LEFT", 0, 0)
+    row.icon:SetSize(28, 28)
+
+    row.mainText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.mainText:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 10, -1)
+    row.mainText:SetPoint("RIGHT", -80, 0)
+    row.mainText:SetJustifyH("LEFT")
+
+    row.subtitle = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.subtitle:SetPoint("TOPLEFT", row.mainText, "BOTTOMLEFT", 0, -2)
+    row.subtitle:SetPoint("RIGHT", -80, 0)
+    row.subtitle:SetJustifyH("LEFT")
+
+    row.weeks = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.weeks:SetPoint("RIGHT", 0, 0)
+    row.weeks:SetWidth(80)
+    row.weeks:SetJustifyH("RIGHT")
+
+    return row
+end
+
+local function CreatePriorityRow(parent, index)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(32)
+    row:SetPoint("TOPLEFT", 10, -28 - ((index - 1) * 36))
+    row:SetPoint("RIGHT", -10, 0)
+
+    row.number = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    row.number:SetPoint("LEFT", 0, 0)
+    row.number:SetWidth(20)
+    row.number:SetJustifyH("CENTER")
+
+    row.numberBg = row:CreateTexture(nil, "ARTWORK")
+    row.numberBg:SetPoint("CENTER", row.number, "CENTER", 0, 0)
+    row.numberBg:SetSize(22, 22)
+    row.numberBg:SetColorTexture(0.1, 0.1, 0.1, 0.6)
+    row.numberBg:SetDrawLayer("ARTWORK", -1)
+
+    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.text:SetPoint("LEFT", row.number, "RIGHT", 8, 0)
+    row.text:SetPoint("RIGHT", -110, 0)
+    row.text:SetJustifyH("LEFT")
+
+    row.cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    row.cost:SetPoint("RIGHT", 0, 0)
+    row.cost:SetWidth(110)
+    row.cost:SetJustifyH("RIGHT")
+
+    return row
+end
+
+local function EnsureSummaryWidgets(frame)
+    if frame.summaryView then
+        return
+    end
+
+    frame.summaryView = CreateFrame("Frame", nil, frame)
+    frame.summaryView:SetPoint("TOPLEFT", 8, -37)
+    frame.summaryView:SetPoint("BOTTOMRIGHT", -8, 37)
+    frame.summaryView:Hide()
+
+    -- Stat cards (3 cards, 8px gaps between)
+    local statCardW = 240
+    local statGap = 8
+    frame.summaryView.statCards = {}
+    frame.summaryView.statCards[1] = CreateStatCard(frame.summaryView, 0, "Total crests needed")
+    frame.summaryView.statCards[2] = CreateStatCard(frame.summaryView, statCardW + statGap, "Saved by optimal order")
+    frame.summaryView.statCards[3] = CreateStatCard(frame.summaryView, (statCardW + statGap) * 2, "Weeks at cap")
+    for i = 1, 3 do
+        frame.summaryView.statCards[i]:SetWidth(statCardW)
+    end
+
+    -- Weekly outlook card
+    local oc = CreateFrame("Frame", nil, frame.summaryView)
+    oc:SetPoint("TOPLEFT", 0, -80)
+    oc:SetPoint("RIGHT", 0, 0)
+    oc:SetHeight(180)
+    ApplyCardBg(oc)
+
+    oc.title = oc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    oc.title:SetPoint("TOPLEFT", 10, -8)
+    oc.title:SetText(C(COLORS.section, "WEEKLY OUTLOOK"))
+
+    oc.rows = {}
+    for i = 1, 4 do
+        oc.rows[i] = CreateOutlookRow(oc, i)
+    end
+
+    frame.summaryView.outlookCard = oc
+
+    -- Priority order card
+    local pc = CreateFrame("Frame", nil, frame.summaryView)
+    pc:SetPoint("TOPLEFT", 0, -268)
+    pc:SetPoint("RIGHT", 0, 0)
+    pc:SetHeight(180)
+    ApplyCardBg(pc)
+
+    pc.title = pc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    pc.title:SetPoint("TOPLEFT", 10, -8)
+    pc.title:SetText(C(COLORS.section, "PRIORITY ORDER THIS WEEK"))
+
+    pc.rows = {}
+    for i = 1, 4 do
+        pc.rows[i] = CreatePriorityRow(pc, i)
+    end
+
+    frame.summaryView.priorityCard = pc
+end
+
+---------------------------------------------------------------------------
+-- Tab helpers
+---------------------------------------------------------------------------
 local function IsTrackTab(tabName)
     return tabName ~= "Summary"
 end
@@ -116,7 +413,6 @@ local function ApplyTabVisual(tab, isSelected)
     if not tab or not tab.bg then
         return
     end
-
     if isSelected then
         tab.bg:SetColorTexture(0.05, 0.18, 0.2, 0.95)
         tab.activeBar:Show()
@@ -128,6 +424,21 @@ local function ApplyTabVisual(tab, isSelected)
     end
 end
 
+local function TrackHasWork(self, trackName)
+    if trackName == "Summary" then
+        return true
+    end
+    local result = GetTrackResult(self, trackName)
+    if not result then
+        return false
+    end
+    local optimal = result.scenarioA or 0
+    if result.scenarioB and result.scenarioB < optimal then
+        optimal = result.scenarioB
+    end
+    return optimal > 0
+end
+
 local function RefreshTabVisibility(self)
     if not self.frame or not self.frame.tabs then
         return
@@ -135,9 +446,8 @@ local function RefreshTabVisibility(self)
 
     local visibleTabs = {}
     for index, tabName in ipairs(TAB_ORDER) do
-        local shouldShow = true
         local tab = self.frame.tabs[index]
-        if shouldShow then
+        if TrackHasWork(self, tabName) then
             tab:Show()
             visibleTabs[#visibleTabs + 1] = { index = index, name = tabName, tab = tab }
         else
@@ -145,9 +455,16 @@ local function RefreshTabVisibility(self)
         end
     end
 
+    if #visibleTabs == 0 then
+        local summaryIdx = #TAB_ORDER
+        local tab = self.frame.tabs[summaryIdx]
+        tab:Show()
+        visibleTabs[1] = { index = summaryIdx, name = "Summary", tab = tab }
+    end
+
     for visibleIndex, info in ipairs(visibleTabs) do
         info.tab:ClearAllPoints()
-        info.tab:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", (visibleIndex - 1) * 78, 1)
+        info.tab:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", (visibleIndex - 1) * 78, 0)
     end
 
     local selectedIndex
@@ -168,307 +485,337 @@ local function RefreshTabVisibility(self)
     end
 end
 
-local function BuildActionText(trackResult)
-    local function LimitLines(lines, keepCount)
-        if #lines <= keepCount then
-            return lines
-        end
-        local limited = {}
-        for i = 1, keepCount do
-            limited[#limited + 1] = lines[i]
-        end
-        limited[#limited + 1] = string.format("... and %d more actions", #lines - keepCount)
-        return limited
+---------------------------------------------------------------------------
+-- Track view rendering
+---------------------------------------------------------------------------
+local function ActionCardHeading(result)
+    local mainName = result.mainName or "Main"
+
+    if result.discountAlreadyActive then
+        return string.format("Upgrade your main (%s) \226\128\148 warband discount is active", mainName)
     end
 
-    if trackResult.shouldSwitchCharacter and trackResult.cheapestCompletionCharacter and trackResult.currentCompletionCost then
-        local lines = {}
-        lines[#lines + 1] = string.format(
-            "Decision: Switch to %s for this track.",
-            trackResult.cheapestCompletionCharacter
-        )
-        lines[#lines + 1] = string.format(
-            "Reason: %s cost %d vs current %d.",
-            trackResult.cheapestCompletionCharacter,
-            trackResult.cheapestCompletionCost or 0,
-            trackResult.currentCompletionCost or 0
-        )
-        lines[#lines + 1] = "Use this character to push the next discount unlock fastest."
-        return table.concat(lines, "\n")
+    if result.shouldSwitchCharacter and result.cheapestCompletionCharacter then
+        local diff = (result.currentCompletionCost or 0) - (result.cheapestCompletionCost or 0)
+        return string.format("Switch to %s \226\128\148 saves %d crests vs current character",
+            result.cheapestCompletionCharacter, math.max(0, diff))
     end
 
-    if trackResult.discountAlreadyActive then
-        local lines = {
-            "Decision: Upgrade your current character now (discount already active).",
-        }
-        local shown = math.min(3, #(trackResult.mainUpgradeActions or {}))
-        for index = 1, shown do
-            local action = trackResult.mainUpgradeActions[index]
-            lines[#lines + 1] = string.format(
-                "%d) %s: %s%s (%d crest)",
-                index,
-                trackResult.mainName or "Current",
-                action.slotName,
-                action.source == "bag" and " [equip from bag]" or "",
-                action.cost
-            )
-        end
-        if (trackResult.remainingMainSlots or 0) > shown then
-            lines[#lines + 1] = string.format("+ %d more slots pending", (trackResult.remainingMainSlots or 0) - shown)
-        end
-        return table.concat(LimitLines(lines, 6), "\n")
+    if result.altFirstIsBetter then
+        return string.format("Upgrade alts first \226\128\148 unlocking the discount saves %d crests on your main",
+            result.savings or 0)
     end
 
-    local lines = {}
-    if not trackResult.altFirstIsBetter then
-        lines[#lines + 1] = "Decision: Upgrade your current character first."
-        lines[#lines + 1] = string.format(
-            "Reason: Alt-first costs %d more crest.",
-            math.max(0, (trackResult.scenarioB == math.huge and 0 or trackResult.scenarioB) - (trackResult.scenarioA == math.huge and 0 or trackResult.scenarioA))
-        )
-        local shown = math.min(3, #(trackResult.mainUpgradeActions or {}))
-        for index = 1, shown do
-            local action = trackResult.mainUpgradeActions[index]
-            lines[#lines + 1] = string.format(
-                "%d) %s: %s%s (%d crest)",
-                index,
-                trackResult.mainName or "Current",
-                action.slotName,
-                action.source == "bag" and " [equip from bag]" or "",
-                action.cost
-            )
-        end
-        if (trackResult.remainingMainSlots or 0) > shown then
-            lines[#lines + 1] = string.format("+ %d more slots pending", (trackResult.remainingMainSlots or 0) - shown)
-        end
-        return table.concat(LimitLines(lines, 6), "\n")
+    local diff = 0
+    if result.scenarioB and result.scenarioB < math.huge and result.scenarioA then
+        diff = math.max(0, result.scenarioB - result.scenarioA)
     end
-
-    lines[#lines + 1] = "Decision: Upgrade alts first to unlock discount."
-    lines[#lines + 1] = string.format("Reason: Saves %d crest total.", trackResult.savings or 0)
-
-    for index = 1, math.min(3, #(trackResult.altActions or {})) do
-        local action = trackResult.altActions[index]
-        lines[#lines + 1] = string.format(
-            "%d) %s: %s%s (%d crest)",
-            index,
-            action.characterName,
-            action.slotName,
-            action.source == "bag" and " [equip from bag]" or "",
-            action.cost
-        )
-    end
-
-    local shownAltActions = math.min(3, #(trackResult.altActions or {}))
-    lines[#lines + 1] = string.format("%d) %s: finish remaining slots with discount.", shownAltActions + 1, trackResult.mainName or "Current")
-    return table.concat(LimitLines(lines, 6), "\n")
+    return string.format("Upgrade your main (%s) first \226\128\148 alt-first costs %d more crests", mainName, diff)
 end
 
-local function BuildWarbandVisualData(allTrackResults)
-    local preferredTracks = { "Veteran", "Champion", "Hero", "Myth" }
-    local visibleTracks = {}
-    local characterMap = {}
+local function RenderTrackView(self, trackName)
+    local result = GetTrackResult(self, trackName)
+    EnsureTrackWidgets(self.frame)
 
-    for _, trackName in ipairs(preferredTracks) do
-        local result = allTrackResults[trackName]
-        if result and (result.remainingMainSlots or 0) > 0 then
-            visibleTracks[#visibleTracks + 1] = trackName
-        end
+    if self.frame.summaryView then
+        self.frame.summaryView:Hide()
     end
-    if #visibleTracks == 0 then
-        for _, trackName in ipairs(preferredTracks) do
-            if allTrackResults[trackName] then
-                visibleTracks[#visibleTracks + 1] = trackName
-            end
-        end
-    end
+    self.frame.trackView:Show()
 
-    for _, trackName in ipairs(visibleTracks) do
-        local result = allTrackResults[trackName]
-        for _, row in ipairs((result and result.warbandRows) or {}) do
-            local key = string.format("%s-%s", row.name or "Unknown", row.realm or "UnknownRealm")
-            if not characterMap[key] then
-                characterMap[key] = {
-                    key = key,
-                    name = row.name or "Unknown",
-                    realm = row.realm or "UnknownRealm",
-                    isMain = row.isMain == true,
-                    perTrack = {},
+    local ac = self.frame.trackView.actionCard
+    local isAmber = result.altFirstIsBetter and not result.discountAlreadyActive
+
+    -- Color the action card
+    local bgColor = isAmber and COLORS.amberBg or COLORS.greenBg
+    ApplyCardBg(ac, bgColor)
+    local accentColor = isAmber and COLORS.amberAccent or COLORS.greenAccent
+    ac.leftAccent:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], accentColor[4])
+
+    ac.subtitle:SetText(C(isAmber and COLORS.warn or COLORS.good,
+        string.format("THIS WEEK \226\128\148 %s TRACK", trackName:upper())))
+
+    ac.heading:SetText(ActionCardHeading(result))
+
+    -- Action rows
+    local actions = {}
+    if isAmber then
+        for i, action in ipairs(result.altActions or {}) do
+            if i <= 3 then
+                actions[#actions + 1] = {
+                    text = string.format("Upgrade %s \226\128\148 %s slot",
+                        action.characterName or "Alt", action.slotName or "?"),
+                    cost = string.format("%d %s crests", action.cost or 0, trackName),
                 }
             end
-            characterMap[key].isMain = characterMap[key].isMain or row.isMain == true
-            characterMap[key].perTrack[trackName] = row
+        end
+        actions[#actions + 1] = {
+            text = string.format("Then upgrade %s at %s discount",
+                result.mainName or "Main", DiscountPctLabel()),
+            cost = string.format("saves %d crests", result.savings or 0),
+        }
+    else
+        for i, action in ipairs(result.mainUpgradeActions or {}) do
+            if i <= 4 then
+                actions[#actions + 1] = {
+                    text = string.format("Upgrade %s \226\128\148 %s slot",
+                        result.mainName or "Main", action.slotName or "?"),
+                    cost = string.format("%d %s crests", action.cost or 0, trackName),
+                }
+            end
         end
     end
 
-    local chars = {}
-    for _, entry in pairs(characterMap) do
-        chars[#chars + 1] = entry
-    end
-    table.sort(chars, function(a, b)
-        if a.isMain ~= b.isMain then
-            return a.isMain
+    local maxActionRows = math.min(4, #actions)
+    for i = 1, 4 do
+        local row = ac.rows[i]
+        if i <= maxActionRows then
+            row.number:SetText(C(COLORS.muted, tostring(i)))
+            row.text:SetText(actions[i].text)
+            row.cost:SetText(C(COLORS.muted, actions[i].cost))
+            row:Show()
+        else
+            row:Hide()
         end
+    end
+
+    -- Adjust action card height based on visible rows
+    local actionCardHeight = 66 + (maxActionRows * 28)
+    ac:SetHeight(actionCardHeight)
+
+    -- Reposition bottom cards with consistent 8px gap
+    local bottomTop = -(actionCardHeight + 8)
+    local totalWidth = self.frame.trackView:GetWidth()
+    local halfWidth = math.floor((totalWidth - 8) / 2)
+
+    self.frame.trackView.warbandCard:ClearAllPoints()
+    self.frame.trackView.warbandCard:SetPoint("TOPLEFT", 0, bottomTop)
+    self.frame.trackView.warbandCard:SetPoint("BOTTOMLEFT", 0, 0)
+    self.frame.trackView.warbandCard:SetWidth(halfWidth)
+
+    self.frame.trackView.discountCard:ClearAllPoints()
+    self.frame.trackView.discountCard:SetPoint("TOPRIGHT", 0, bottomTop)
+    self.frame.trackView.discountCard:SetPoint("BOTTOMRIGHT", 0, 0)
+    self.frame.trackView.discountCard:SetWidth(halfWidth)
+
+    -- Warband card
+    local wc = self.frame.trackView.warbandCard
+    wc.title:SetText(C(COLORS.section, string.format("WARBAND \226\128\148 %s PROGRESS", trackName:upper())))
+
+    -- Filter out characters below max level (not eligible for endgame crest progression)
+    -- and those with no known-track gear. Always keep the main character.
+    local minLevel = Constants.MIN_CHARACTER_LEVEL or 0
+    local allRows = result.warbandRows or {}
+    local warbandRows = {}
+    for _, row in ipairs(allRows) do
+        local levelOk = (row.level or 0) >= minLevel
+        local hasGear = (row.knownSlots or 0) > 0
+        if row.isMain or (levelOk and hasGear) then
+            warbandRows[#warbandRows + 1] = row
+        end
+    end
+    table.sort(warbandRows, function(a, b)
+        if a.isMain ~= b.isMain then return a.isMain end
         return a.name < b.name
     end)
 
-    return visibleTracks, chars
-end
+    local maxCharRows = math.min(6, #warbandRows)
+    for i = 1, 6 do
+        local charRow = wc.charRows[i]
+        if i <= maxCharRows then
+            local data = warbandRows[i]
+            if CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[data.classFileName] then
+                local coords = CLASS_ICON_TCOORDS[data.classFileName]
+                charRow.classIcon:SetTexCoord(unpack(coords))
+            else
+                charRow.classIcon:SetTexCoord(0, 0.25, 0, 0.25)
+            end
+            charRow.name:SetText(data.name or "Unknown")
+            charRow.youBadge:SetText(data.isMain and "you" or "")
+            charRow.realm:SetText(C(COLORS.muted, data.realm or ""))
 
-local function EnsureSummaryWidgets(frame)
-    if frame.summaryView then
-        return
+            local total = math.max(1, data.totalSlots or 1)
+            local atMax = data.slotsAtMax or 0
+            charRow.bar:SetMinMaxValues(0, total)
+            charRow.bar:SetValue(atMax)
+
+            local barColor = isAmber and COLORS.amberAccent or COLORS.greenAccent
+            charRow.bar:SetStatusBarColor(barColor[1] * 0.7, barColor[2] * 0.7, barColor[3] * 0.7)
+
+            charRow.ratio:SetText(C(COLORS.muted, string.format("%d / %d", atMax, total)))
+            charRow.costText:SetText(string.format("%d crests", data.crestNeeded or 0))
+            charRow:Show()
+        else
+            charRow:Hide()
+        end
     end
 
-    frame.summaryView = CreateFrame("Frame", nil, frame)
-    frame.summaryView:SetPoint("TOPLEFT", 16, -126)
-    frame.summaryView:SetSize(720, 130)
-    frame.summaryView:Hide()
+    -- Discount card
+    local dc = self.frame.trackView.discountCard
+    local discountRowIndex = 0
+    local pctLabel = DiscountPctLabel()
+    for _, tn in ipairs({ "Veteran", "Champion", "Hero", "Myth" }) do
+        local discountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(tn)
+        if not discountActive then
+            discountRowIndex = discountRowIndex + 1
+            if discountRowIndex <= 4 then
+                local drow = dc.discountRows[discountRowIndex]
+                drow.label:SetText(tn)
 
-    frame.summaryView.title = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    frame.summaryView.title:SetPoint("TOPLEFT", 0, 0)
-    frame.summaryView.title:SetText(C(COLORS.section, "WARBAND VISUAL"))
+                local trackResult = GetTrackResult(self, tn)
+                local tnOrder = (Constants.TRACKS[tn] or {}).order or 0
 
-    frame.summaryView.legend = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.summaryView.legend:SetPoint("TOPLEFT", 0, -18)
-    frame.summaryView.legend:SetText(C(COLORS.muted, "Legend: flat bar = capped/known for each track; cost is full finish crest."))
+                -- Threshold = all slots for this character. Use main's totalSlots.
+                local mainSlotsNeeding = 0
+                local mainTotalSlots = 15
+                for _, wr in ipairs(trackResult.warbandRows or {}) do
+                    if wr.isMain then
+                        mainSlotsNeeding = wr.slotsNeeding or 0
+                        mainTotalSlots = wr.totalSlots or 15
+                        break
+                    end
+                end
+                local threshold = mainTotalSlots
+                local remaining = mainSlotsNeeding
 
-    frame.summaryView.overflow = frame.summaryView:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    frame.summaryView.overflow:SetPoint("TOPLEFT", 0, -40)
-    frame.summaryView.overflow:SetText("")
+                drow.bar:SetMinMaxValues(0, threshold)
+                drow.bar:SetValue(threshold - remaining)
 
-    frame.summaryView.rows = {}
-end
+                local currentTrackMeta = Constants.TRACKS[trackName]
+                local currentOrder = currentTrackMeta and currentTrackMeta.order or 0
 
-local function EnsureSummaryRow(parent, rowIndex)
-    if parent.rows[rowIndex] then
-        return parent.rows[rowIndex]
+                if tnOrder == currentOrder then
+                    drow.bar:SetStatusBarColor(0.36, 1.0, 0.48)
+                else
+                    drow.bar:SetStatusBarColor(0.3, 0.5, 0.7)
+                end
+
+                drow.info:SetText(C(COLORS.muted, string.format("%d slots until %s off", remaining, pctLabel)))
+                drow:Show()
+            end
+        end
     end
 
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetSize(712, 22)
-    row:SetPoint("TOPLEFT", 0, -36 - ((rowIndex - 1) * 24))
-
-    row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    row.name:SetPoint("LEFT", 0, 0)
-    row.name:SetWidth(230)
-    row.name:SetJustifyH("LEFT")
-    row.name:SetWordWrap(false)
-
-    row.cells = {}
-    parent.rows[rowIndex] = row
-    return row
-end
-
-local function EnsureSummaryCell(row, cellIndex)
-    if row.cells[cellIndex] then
-        return row.cells[cellIndex]
+    for i = discountRowIndex + 1, 4 do
+        dc.discountRows[i]:Hide()
     end
 
-    local cell = CreateFrame("Frame", nil, row)
-    cell:SetSize(150, 20)
-    cell:SetPoint("LEFT", 238 + ((cellIndex - 1) * 150), 0)
-
-    cell.track = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cell.track:SetPoint("LEFT", 0, 0)
-    cell.track:SetWidth(20)
-    cell.track:SetJustifyH("LEFT")
-
-    cell.bar = CreateFrame("StatusBar", nil, cell)
-    cell.bar:SetPoint("LEFT", 20, 0)
-    cell.bar:SetSize(72, 10)
-    cell.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
-    cell.bar:SetStatusBarColor(0.0, 0.82, 0.76)
-    cell.bar.bg = cell.bar:CreateTexture(nil, "BACKGROUND")
-    cell.bar.bg:SetAllPoints()
-    cell.bar.bg:SetColorTexture(0.08, 0.1, 0.13, 0.9)
-
-    cell.value = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cell.value:SetPoint("LEFT", cell.bar, "RIGHT", 4, 0)
-    cell.value:SetWidth(30)
-    cell.value:SetJustifyH("LEFT")
-
-    cell.cost = cell:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    cell.cost:SetPoint("LEFT", cell.value, "RIGHT", 4, 0)
-    cell.cost:SetWidth(32)
-    cell.cost:SetJustifyH("LEFT")
-
-    row.cells[cellIndex] = cell
-    return cell
+    -- Tip text
+    local tipText = ""
+    if not result.discountAlreadyActive then
+        local mainRow
+        for _, row in ipairs(result.warbandRows or {}) do
+            if row.isMain then mainRow = row; break end
+        end
+        local tipRemaining = (mainRow and mainRow.slotsNeeding) or 0
+        tipText = string.format(
+            "Finish your main's last %s %s slots to unlock the warband discount for all alts.",
+            C(COLORS.value, tostring(tipRemaining)),
+            C(COLORS.value, trackName)
+        )
+    else
+        tipText = C(COLORS.good, "Warband discount is active for " .. trackName .. ".")
+    end
+    dc.tip:SetText(tipText)
 end
 
-local function RenderWarbandVisualBars(self, allTrackResults)
+---------------------------------------------------------------------------
+-- Summary view rendering
+---------------------------------------------------------------------------
+local function RenderSummaryView(self)
+    local allTrackResults = CrestPlanner.Optimiser:EvaluateAllTracks()
+    local weekly = CrestPlanner.Planner:GetWeeklyPreview(allTrackResults)
+
+    if self.frame.trackView then
+        self.frame.trackView:Hide()
+    end
     EnsureSummaryWidgets(self.frame)
-    local summaryView = self.frame.summaryView
-    summaryView:Show()
+    self.frame.summaryView:Show()
 
-    local visibleTracks, chars = BuildWarbandVisualData(allTrackResults)
-    if #visibleTracks == 0 or #chars == 0 then
-        summaryView:SetHeight(56)
-        summaryView.legend:SetText(C(COLORS.muted, "No warband track data available yet."))
-        summaryView.overflow:SetText("")
-        for _, row in ipairs(summaryView.rows) do
+    -- Stat cards
+    local sc = self.frame.summaryView.statCards
+    sc[1].value:SetText(FormatNumber(weekly.totalOptimalCost or 0))
+    sc[2].value:SetText(C(COLORS.good, FormatNumber(weekly.totalSavings or 0)))
+
+    local capLabel = weekly.weeklyCap and string.format("(%d/wk)", weekly.weeklyCap) or ""
+    sc[3].label:SetText(C(COLORS.muted, "Weeks at cap " .. capLabel))
+    if weekly.estimatedWeeks == "N/A" then
+        sc[3].value:SetText(C(COLORS.warn, "N/A"))
+    else
+        sc[3].value:SetText(C(COLORS.warn, string.format("~%s", tostring(weekly.estimatedWeeks))))
+    end
+
+    -- Weekly outlook
+    local oc = self.frame.summaryView.outlookCard
+    local outlookRows = weekly.outlookRows or {}
+    local maxOutlook = math.min(4, #outlookRows)
+    for i = 1, 4 do
+        local row = oc.rows[i]
+        if i <= maxOutlook then
+            local data = outlookRows[i]
+            local currencyName = (Constants.TRACKS[data.trackName] or {}).currencyName
+            local currencyID = currencyName and Constants.CREST_CURRENCY_IDS[currencyName]
+            if currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                local info = C_CurrencyInfo.GetCurrencyInfo(currencyID)
+                if info and info.iconFileID then
+                    row.icon:SetTexture(info.iconFileID)
+                end
+            else
+                row.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+            end
+
+            row.mainText:SetText(string.format(
+                "%s \226\128\148 %d crests held, %d needed for main",
+                C(COLORS.value, data.trackName),
+                data.held or 0,
+                data.needed or 0
+            ))
+
+            local subtitleColor = data.altFirstIsBetter and COLORS.warn or COLORS.muted
+            row.subtitle:SetText(C(subtitleColor, data.subtitle or ""))
+
+            if data.weeks == math.huge then
+                row.weeks:SetText(C(COLORS.muted, "N/A"))
+            elseif data.weeks == 0 then
+                row.weeks:SetText(C(COLORS.good, "done"))
+            else
+                row.weeks:SetText(C(COLORS.muted, string.format("~%d wks", data.weeks)))
+            end
+            row:Show()
+        else
             row:Hide()
         end
-        return 0
     end
 
-    local maxVisibleRows = 5
-    local shownRows = math.min(maxVisibleRows, #chars)
-    local hiddenRows = math.max(0, #chars - shownRows)
+    local outlookHeight = 34 + (maxOutlook * 50)
+    oc:SetHeight(outlookHeight)
 
-    summaryView.legend:SetText(C(COLORS.muted, "Legend: V/Ch/H/M = Veteran/Champion/Hero/Myth. Flat bar = capped/known; cost = full crest finish."))
-    if hiddenRows > 0 then
-        summaryView.overflow:SetText(C(COLORS.muted, string.format("Showing %d of %d characters (+%d more).", shownRows, #chars, hiddenRows)))
-    else
-        summaryView.overflow:SetText("")
-    end
-    summaryView:SetHeight(36 + (shownRows * 24) + (hiddenRows > 0 and 18 or 0) + 8)
+    -- Reposition priority card
+    local pc = self.frame.summaryView.priorityCard
+    pc:ClearAllPoints()
+    pc:SetPoint("TOPLEFT", 0, -(80 + outlookHeight + 8))
+    pc:SetPoint("RIGHT", 0, 0)
 
-    local shortTrack = { Veteran = "V", Champion = "Ch", Hero = "H", Myth = "M" }
-    for rowIndex = 1, shownRows do
-        local char = chars[rowIndex]
-        local row = EnsureSummaryRow(summaryView, rowIndex)
-        local marker = char.isMain and C(COLORS.good, " [CURRENT]") or ""
-        row.name:SetText(string.format("%s%s", char.name, marker))
-        row:Show()
-
-        local cellStartX = 238
-        local cellGap = 14
-        local availableWidth = row:GetWidth() - cellStartX
-        local count = math.max(1, #visibleTracks)
-        local cellWidth = math.max(106, math.floor((availableWidth - (cellGap * (count - 1))) / count))
-
-        for cellIndex, trackName in ipairs(visibleTracks) do
-            local cell = EnsureSummaryCell(row, cellIndex)
-            cell:ClearAllPoints()
-            cell:SetPoint("LEFT", cellStartX + ((cellIndex - 1) * (cellWidth + cellGap)), 0)
-            cell:SetWidth(cellWidth)
-            cell.bar:SetWidth(math.max(40, cellWidth - 88))
-            local data = char.perTrack[trackName]
-            local known = math.max(1, (data and data.knownSlots) or (data and data.totalSlots) or 1)
-            local atMax = math.min(known, (data and data.slotsAtMax) or 0)
-            local cost = (data and data.crestNeeded) or 0
-            cell.track:SetText(C(COLORS.muted, shortTrack[trackName] or trackName:sub(1, 1)))
-            cell.bar:SetMinMaxValues(0, known)
-            cell.bar:SetValue(atMax)
-            cell.value:SetText(C(COLORS.value, string.format("%d/%d", atMax, known)))
-            cell.cost:SetText(C(COLORS.warn, tostring(cost)))
-            cell:Show()
-        end
-
-        for cellIndex = #visibleTracks + 1, #row.cells do
-            row.cells[cellIndex]:Hide()
+    local priorityActions = weekly.priorityActions or {}
+    local maxPriority = math.min(4, #priorityActions)
+    for i = 1, 4 do
+        local row = pc.rows[i]
+        if i <= maxPriority then
+            local data = priorityActions[i]
+            row.number:SetText(C(COLORS.muted, tostring(i)))
+            row.text:SetText(data.text or "")
+            row.cost:SetText(C(COLORS.muted, data.cost or ""))
+            row:Show()
+        else
+            row:Hide()
         end
     end
 
-    for rowIndex = shownRows + 1, #summaryView.rows do
-        summaryView.rows[rowIndex]:Hide()
-    end
-
-    return shownRows + (hiddenRows > 0 and 1 or 0)
+    pc:SetHeight(34 + (maxPriority * 36))
 end
 
+---------------------------------------------------------------------------
+-- Frame creation
+---------------------------------------------------------------------------
 function MainFrame:Create()
     if self.frame then
         return
@@ -487,10 +834,12 @@ function MainFrame:Create()
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     frame:Hide()
 
+    -- Background
     frame.bg = frame:CreateTexture(nil, "BACKGROUND")
     frame.bg:SetAllPoints()
     frame.bg:SetColorTexture(0.03, 0.04, 0.06, 0.95)
 
+    -- Top bar
     frame.topBar = frame:CreateTexture(nil, "ARTWORK")
     frame.topBar:SetPoint("TOPLEFT", 0, 0)
     frame.topBar:SetPoint("TOPRIGHT", 0, 0)
@@ -509,18 +858,20 @@ function MainFrame:Create()
     frame.topBarBottomEdge:SetHeight(1)
     frame.topBarBottomEdge:SetColorTexture(0, 0.82, 0.76, 0.55)
 
+    -- Footer bar (tab area)
     frame.footerBar = frame:CreateTexture(nil, "ARTWORK")
     frame.footerBar:SetPoint("BOTTOMLEFT", 0, 0)
     frame.footerBar:SetPoint("BOTTOMRIGHT", 0, 0)
-    frame.footerBar:SetHeight(32)
+    frame.footerBar:SetHeight(28)
     frame.footerBar:SetColorTexture(0.05, 0.07, 0.1, 0.98)
 
     frame.footerTopEdge = frame:CreateTexture(nil, "BORDER")
-    frame.footerTopEdge:SetPoint("BOTTOMLEFT", 0, 32)
-    frame.footerTopEdge:SetPoint("BOTTOMRIGHT", 0, 32)
+    frame.footerTopEdge:SetPoint("BOTTOMLEFT", 0, 28)
+    frame.footerTopEdge:SetPoint("BOTTOMRIGHT", 0, 28)
     frame.footerTopEdge:SetHeight(1)
     frame.footerTopEdge:SetColorTexture(0, 0.82, 0.76, 0.55)
 
+    -- Logo + title
     local addonLogo = "Interface\\AddOns\\CrestPlanner\\Textures\\CrestPlannerLogo.tga"
 
     frame.titleIconFallback = frame:CreateTexture(nil, "ARTWORK")
@@ -537,6 +888,7 @@ function MainFrame:Create()
     frame.title:SetPoint("LEFT", frame.titleIcon, "RIGHT", 6, 0)
     frame.title:SetText("Crest Planner")
 
+    -- Close button
     frame.close = CreateFrame("Button", nil, frame)
     frame.close:SetPoint("TOPRIGHT", -6, -5)
     frame.close:SetSize(18, 18)
@@ -559,23 +911,11 @@ function MainFrame:Create()
         frame.close.label:SetTextColor(1, 1, 1)
     end)
 
-    frame.body = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    frame.body:SetPoint("TOPLEFT", 16, -44)
-    frame.body:SetWidth(720)
-    frame.body:SetJustifyH("LEFT")
-    frame.body:SetJustifyV("TOP")
-
-    frame.accent = frame:CreateTexture(nil, "ARTWORK")
-    frame.accent:SetColorTexture(0, 0.82, 0.76, 0.9)
-    frame.accent:SetPoint("TOPLEFT", 12, -37)
-    frame.accent:SetPoint("TOPRIGHT", -12, -37)
-    frame.accent:SetHeight(2)
-    frame.accent:Hide()
-
+    -- Tabs (at top, below top bar)
     frame.tabs = {}
     for index, tabName in ipairs(TAB_ORDER) do
         local tab = CreateFrame("Button", "$parentTab" .. index, frame)
-        tab:SetSize(78, 30)
+        tab:SetSize(78, 28)
 
         tab.bg = tab:CreateTexture(nil, "BACKGROUND")
         tab.bg:SetAllPoints()
@@ -597,7 +937,7 @@ function MainFrame:Create()
         tab.text:SetText(tabName)
         tab.text:SetTextColor(0.72, 0.82, 0.82)
 
-        tab:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", (index - 1) * 78, 1)
+        tab:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", (index - 1) * 78, 0)
         tab:SetScript("OnClick", function()
             MainFrame.selectedTabName = tabName
             MainFrame:Render(tabName)
@@ -607,6 +947,7 @@ function MainFrame:Create()
 
     self.selectedTabName = TAB_ORDER[1]
 
+    -- ESC close
     if UISpecialFrames then
         local alreadyRegistered = false
         for _, frameName in ipairs(UISpecialFrames) do
@@ -624,144 +965,9 @@ function MainFrame:Create()
     RefreshTabVisibility(self)
 end
 
-local function RenderTrackView(self, trackName)
-    local result = GetTrackResult(self, trackName)
-    EnsureTrackWidgets(self.frame)
-
-    self.frame.body:Hide()
-    if self.frame.summaryView then
-        self.frame.summaryView:Hide()
-    end
-    self.frame.trackView:Show()
-
-    local rows = {}
-    for _, row in ipairs(result.warbandRows) do
-        local marker = row.isMain and (" " .. C(COLORS.good, "[CURRENT]")) or ""
-        rows[#rows + 1] = string.format(
-            "• %s (%s)%s  |  %s %s  |  %s %s",
-            C(COLORS.value, row.name),
-            C(COLORS.muted, row.realm),
-            marker,
-            C(COLORS.muted, "Need:"),
-            C(COLORS.value, row.slotsNeeding),
-            C(COLORS.muted, "Full Cost:"),
-            C(COLORS.value, row.crestNeeded)
-        )
-    end
-
-    local recommendationLine = result.altFirstIsBetter
-            and C(COLORS.good, string.format("[BEST] Alt-first saves %d.", result.savings))
-            or C(COLORS.warn, "[OK] Current-character-first is optimal.")
-    if result.shouldSwitchCharacter and result.cheapestCompletionCharacter then
-        recommendationLine = C(
-            COLORS.warn,
-            string.format("[SWITCH] Progress on %s first.", result.cheapestCompletionCharacter)
-        )
-    end
-
-    local reasonLine = C(COLORS.muted, "No additional context.")
-    if result.shouldSwitchCharacter and result.cheapestCompletionCharacter and result.currentCompletionCost then
-        reasonLine = C(
-            COLORS.value,
-            string.format("%s %d vs current %d cost.", result.cheapestCompletionCharacter, result.cheapestCompletionCost or 0, result.currentCompletionCost or 0)
-        )
-    elseif result.altFirstIsBetter then
-        reasonLine = C(COLORS.value, string.format("Alt-first saves %d crest total.", result.savings or 0))
-    end
-
-    self.frame.trackView.decisionCard.text:SetText(table.concat({
-        string.format("%s %s", C(COLORS.muted, "Track:"), C(COLORS.accent, trackName)),
-        recommendationLine,
-        string.format("%s %s", C(COLORS.muted, "Reason:"), reasonLine),
-    }, "\n"))
-    self.frame.trackView.actionsCard.text:SetText(BuildActionText(result))
-    self.frame.trackView.warbandCard.text:SetText(table.concat(rows, "\n"))
-
-    local achievementId = (CrestPlanner.Constants.DISCOUNT_ACHIEVEMENT_IDS or {})[trackName]
-    local currentSlotsAtMax = 0
-    local currentSlotsNeeding = 0
-    local currentFullCost = 0
-    local currentTotalSlots = 0
-    local currentKnownSlots = 0
-    for _, row in ipairs(result.warbandRows or {}) do
-        local slotsAtMax = row.slotsAtMax or 0
-        if row.isMain then
-            currentSlotsAtMax = slotsAtMax
-            currentSlotsNeeding = row.slotsNeeding or 0
-            currentFullCost = row.crestNeeded or 0
-            currentTotalSlots = row.totalSlots or 0
-            currentKnownSlots = row.knownSlots or 0
-            break
-        end
-    end
-
-    local slotTarget = math.max(1, currentKnownSlots > 0 and currentKnownSlots or currentTotalSlots)
-    local shownValue = math.min(currentSlotsAtMax, slotTarget)
-    local row = self.frame.trackView.progressRow
-    row.label:SetText(C(COLORS.muted, trackName))
-    row.bar:SetMinMaxValues(0, slotTarget)
-    row.bar:SetValue(shownValue)
-    row.value:SetText(C(COLORS.value, string.format("%d/%d", shownValue, slotTarget)))
-    local explanation = string.format("Current character %s slot completion.", trackName)
-    local cappedLine = string.format(
-        "Capped slots now: %d/%d known slots.",
-        currentSlotsAtMax,
-        slotTarget
-    )
-    if result.discountAlreadyActive then
-        row.bar:SetStatusBarColor(0.36, 1, 0.48)
-        self.frame.trackView.progressNote:SetText(table.concat({
-            C(COLORS.good, "Warband discount active (achievement)."),
-            C(COLORS.muted, explanation),
-            C(COLORS.muted, cappedLine),
-            C(COLORS.value, string.format("Full completion left: %d slots (%d cost).", currentSlotsNeeding, currentFullCost)),
-        }, "\n"))
-    else
-        row.bar:SetStatusBarColor(0.0, 0.82, 0.76)
-        local lines = {
-            C(COLORS.muted, explanation),
-            C(COLORS.muted, cappedLine),
-            C(COLORS.value, string.format("Full completion left: %d slots (%d cost).", currentSlotsNeeding, currentFullCost)),
-        }
-        if not achievementId then
-            table.insert(lines, 1, C(COLORS.muted, "Achievement ID not set in constants; addon cannot check discount from API."))
-        end
-        self.frame.trackView.progressNote:SetText(table.concat(lines, "\n"))
-    end
-end
-
-local function RenderSummaryView(self)
-    local allTrackResults = CrestPlanner.Optimiser:EvaluateAllTracks()
-    local weekly = CrestPlanner.Planner:GetWeeklyPreview(allTrackResults)
-
-    if self.frame.trackView then
-        self.frame.trackView:Hide()
-    end
-    local renderedWarbandRows = RenderWarbandVisualBars(self, allTrackResults)
-    self.frame.body:Show()
-
-    local spacer = {}
-    local spacerLines = math.max(10, 7 + ((renderedWarbandRows or 0) * 3))
-    for _ = 1, spacerLines do
-        spacer[#spacer + 1] = ""
-    end
-
-    self.frame.body:SetText(table.concat({
-        SectionHeader("SUMMARY ACROSS ALL TRACKS"),
-        string.format("%s %s", C(COLORS.muted, "Current-first total:"), C(COLORS.value, weekly.totalMainFirstCost)),
-        string.format("%s %s", C(COLORS.muted, "Optimal ordering total:"), C(COLORS.value, weekly.totalOptimalCost)),
-        string.format("%s %s", C(COLORS.muted, "Total saved by optimiser:"), C(COLORS.good, weekly.totalSavings)),
-        "",
-        table.concat(spacer, "\n"),
-        SectionHeader("WEEKLY PLANNER"),
-        weekly.message,
-        string.format("%s %s", C(COLORS.muted, "Overall timeline:"), C(COLORS.value, weekly.overallWeeksLine or weekly.estimatedWeeks)),
-        "",
-        SectionHeader("THIS WEEK PRIORITY"),
-        table.concat(weekly.priorityLines, "\n"),
-    }, "\n"))
-end
-
+---------------------------------------------------------------------------
+-- Public API
+---------------------------------------------------------------------------
 function MainFrame:Render(tabName)
     self._renderCache = {}
     RefreshTabVisibility(self)
