@@ -489,10 +489,10 @@ end
 -- Track view rendering
 ---------------------------------------------------------------------------
 local function ActionCardHeading(result)
-    local mainName = result.mainName or "Main"
+    local charName = result.mainName or "this character"
 
     if result.discountAlreadyActive then
-        return string.format("Upgrade your main (%s) \226\128\148 warband discount is active", mainName)
+        return string.format("Upgrade %s \226\128\148 warband discount is active", charName)
     end
 
     if result.shouldSwitchCharacter and result.cheapestCompletionCharacter then
@@ -502,7 +502,7 @@ local function ActionCardHeading(result)
     end
 
     if result.altFirstIsBetter then
-        return string.format("Upgrade alts first \226\128\148 unlocking the discount saves %d crests on your main",
+        return string.format("Upgrade another character first \226\128\148 unlocks the discount and saves %d crests",
             result.savings or 0)
     end
 
@@ -510,7 +510,7 @@ local function ActionCardHeading(result)
     if result.scenarioB and result.scenarioB < math.huge and result.scenarioA then
         diff = math.max(0, result.scenarioB - result.scenarioA)
     end
-    return string.format("Upgrade your main (%s) first \226\128\148 alt-first costs %d more crests", mainName, diff)
+    return string.format("Upgrade %s first \226\128\148 switching would cost %d more crests", charName, diff)
 end
 
 local function RenderTrackView(self, trackName)
@@ -550,7 +550,7 @@ local function RenderTrackView(self, trackName)
         end
         actions[#actions + 1] = {
             text = string.format("Then upgrade %s at %s discount",
-                result.mainName or "Main", DiscountPctLabel()),
+                result.mainName or "this character", DiscountPctLabel()),
             cost = string.format("saves %d crests", result.savings or 0),
         }
     else
@@ -558,7 +558,7 @@ local function RenderTrackView(self, trackName)
             if i <= 4 then
                 actions[#actions + 1] = {
                     text = string.format("Upgrade %s \226\128\148 %s slot",
-                        result.mainName or "Main", action.slotName or "?"),
+                        result.mainName or "this character", action.slotName or "?"),
                     cost = string.format("%d %s crests", action.cost or 0, trackName),
                 }
             end
@@ -601,15 +601,23 @@ local function RenderTrackView(self, trackName)
     local wc = self.frame.trackView.warbandCard
     wc.title:SetText(C(COLORS.section, string.format("WARBAND \226\128\148 %s PROGRESS", trackName:upper())))
 
-    -- Filter out characters below max level (not eligible for endgame crest progression)
-    -- and those with no known-track gear. Always keep the main character.
+    -- Filter out characters that aren't actionable for this track:
+    --  - Below max level (not eligible for endgame crest progression)
+    --  - No known-track gear (never scanned with new-enough data)
+    --  - Stale data (no upgrades needed but not fully complete — usually
+    --    means their items can't be evaluated, not that they're actually done)
+    -- Always keep the main character.
     local minLevel = Constants.MIN_CHARACTER_LEVEL or 0
     local allRows = result.warbandRows or {}
     local warbandRows = {}
     for _, row in ipairs(allRows) do
         local levelOk = (row.level or 0) >= minLevel
         local hasGear = (row.knownSlots or 0) > 0
-        if row.isMain or (levelOk and hasGear) then
+        local totalSlots = row.totalSlots or 0
+        local slotsAtMax = row.slotsAtMax or 0
+        local slotsNeeding = row.slotsNeeding or 0
+        local actionable = slotsNeeding > 0 or (totalSlots > 0 and slotsAtMax >= totalSlots)
+        if row.isMain or (levelOk and hasGear and actionable) then
             warbandRows[#warbandRows + 1] = row
         end
     end
@@ -707,8 +715,10 @@ local function RenderTrackView(self, trackName)
             if row.isMain then mainRow = row; break end
         end
         local tipRemaining = (mainRow and mainRow.slotsNeeding) or 0
+        local charForTip = (result.mainName) or "this character"
         tipText = string.format(
-            "Finish your main's last %s %s slots to unlock the warband discount for all alts.",
+            "Finish %s's last %s %s slots to unlock the warband discount for all characters.",
+            charForTip,
             C(COLORS.value, tostring(tipRemaining)),
             C(COLORS.value, trackName)
         )
@@ -764,7 +774,7 @@ local function RenderSummaryView(self)
             end
 
             row.mainText:SetText(string.format(
-                "%s \226\128\148 %d crests held, %d needed for main",
+                "%s \226\128\148 %d crests held, %d needed to finish",
                 C(COLORS.value, data.trackName),
                 data.held or 0,
                 data.needed or 0
@@ -961,6 +971,30 @@ function MainFrame:Create()
         end
     end
 
+    -- Level gate overlay: covers content when player is below max level
+    frame.levelGate = CreateFrame("Frame", nil, frame)
+    frame.levelGate:SetPoint("TOPLEFT", 0, -29)
+    frame.levelGate:SetPoint("BOTTOMRIGHT", 0, 29)
+    frame.levelGate:SetFrameLevel(frame:GetFrameLevel() + 50)
+    frame.levelGate:Hide()
+
+    frame.levelGate.bg = frame.levelGate:CreateTexture(nil, "BACKGROUND")
+    frame.levelGate.bg:SetAllPoints()
+    frame.levelGate.bg:SetColorTexture(0.02, 0.03, 0.05, 0.96)
+
+    frame.levelGate.icon = frame.levelGate:CreateTexture(nil, "ARTWORK")
+    frame.levelGate.icon:SetPoint("CENTER", 0, 40)
+    frame.levelGate.icon:SetSize(64, 64)
+    frame.levelGate.icon:SetTexture("Interface\\Icons\\Spell_ChargePositive")
+
+    frame.levelGate.title = frame.levelGate:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    frame.levelGate.title:SetPoint("CENTER", 0, -20)
+    frame.levelGate.title:SetTextColor(1, 1, 1)
+
+    frame.levelGate.subtitle = frame.levelGate:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    frame.levelGate.subtitle:SetPoint("CENTER", 0, -50)
+    frame.levelGate.subtitle:SetTextColor(0.6, 0.72, 0.72)
+
     self.frame = frame
     RefreshTabVisibility(self)
 end
@@ -970,6 +1004,51 @@ end
 ---------------------------------------------------------------------------
 function MainFrame:Render(tabName)
     self._renderCache = {}
+
+    -- Ensure the level gate exists (self-healing if frame predates overlay code)
+    if not self.frame.levelGate then
+        local gate = CreateFrame("Frame", nil, self.frame)
+        gate:SetPoint("TOPLEFT", 0, -29)
+        gate:SetPoint("BOTTOMRIGHT", 0, 29)
+        gate:SetFrameLevel(self.frame:GetFrameLevel() + 50)
+        gate:EnableMouse(true)
+        gate:Hide()
+
+        gate.bg = gate:CreateTexture(nil, "BACKGROUND")
+        gate.bg:SetAllPoints()
+        gate.bg:SetColorTexture(0.02, 0.03, 0.05, 0.98)
+
+        gate.icon = gate:CreateTexture(nil, "ARTWORK")
+        gate.icon:SetPoint("CENTER", 0, 50)
+        gate.icon:SetSize(64, 64)
+        gate.icon:SetTexture("Interface\\Icons\\Spell_ChargePositive")
+
+        gate.title = gate:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        gate.title:SetPoint("CENTER", 0, -10)
+        gate.title:SetTextColor(1, 1, 1)
+
+        gate.subtitle = gate:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        gate.subtitle:SetPoint("CENTER", 0, -40)
+        gate.subtitle:SetTextColor(0.6, 0.72, 0.72)
+
+        self.frame.levelGate = gate
+    end
+
+    -- Level gate: if the current character is below max, show overlay and stop.
+    local minLevel = Constants.MIN_CHARACTER_LEVEL or 0
+    local playerLevel = UnitLevel("player") or 0
+    if minLevel > 0 and playerLevel > 0 and playerLevel < minLevel then
+        if self.frame.trackView then self.frame.trackView:Hide() end
+        if self.frame.summaryView then self.frame.summaryView:Hide() end
+        for _, tab in ipairs(self.frame.tabs or {}) do tab:Hide() end
+        self.frame.levelGate.title:SetText(string.format("Reach level %d to activate", minLevel))
+        self.frame.levelGate.subtitle:SetText(string.format("Currently level %d", playerLevel))
+        self.frame.levelGate:Show()
+        return
+    end
+
+    self.frame.levelGate:Hide()
+
     RefreshTabVisibility(self)
     if tabName ~= self.selectedTabName then
         tabName = self.selectedTabName

@@ -393,7 +393,10 @@ local function ThresholdUnlockPlanForCharacter(character, characterName, trackNa
 
     local needed = threshold - completeCount
     if needed <= 0 then
-        return 0, {}, unknownIgnored, belowTrackCandidates
+        -- Alt already at threshold but achievement isn't active — data mismatch.
+        -- Return math.huge so this alt is skipped and we look for one that has
+        -- actual upgrade work to recommend.
+        return math.huge, {}, unknownIgnored, belowTrackCandidates
     end
 
     table.sort(candidates, function(a, b) return a.cost < b.cost end)
@@ -544,9 +547,41 @@ function Optimiser:EvaluateTrack(trackName)
 
     local warbandRows = BuildTrackData(trackName)
     local cheapestUnlockCharacter, cheapestUnlockCost, currentUnlockCost = CheapestCharacterForThreshold(trackName)
+
+    -- Also consider total remaining crest cost across characters. If an alt
+    -- has significantly less work remaining for this track than the main,
+    -- recommend switching to that character regardless of threshold logic.
+    local cheapestCompletionByTotalCost
+    local cheapestCompletionTotal = math.huge
+    local mainTotalCost = math.huge
+    for _, row in ipairs(warbandRows) do
+        local cost = row.crestNeeded or 0
+        if row.slotsNeeding and row.slotsNeeding > 0 then
+            if row.isMain then
+                mainTotalCost = cost
+            end
+            if cost < cheapestCompletionTotal then
+                cheapestCompletionTotal = cost
+                cheapestCompletionByTotalCost = row.name
+            end
+        end
+    end
+
     local shouldSwitchCharacter = cheapestUnlockCharacter and mainName
         and cheapestUnlockCharacter ~= mainName
         and (cheapestUnlockCost or math.huge) < (currentUnlockCost or math.huge)
+
+    -- Also switch if an alt has much less total remaining work than the main
+    if not shouldSwitchCharacter
+        and cheapestCompletionByTotalCost
+        and cheapestCompletionByTotalCost ~= mainName
+        and cheapestCompletionTotal < mainTotalCost
+        and (mainTotalCost - cheapestCompletionTotal) >= 40 then
+        shouldSwitchCharacter = true
+        cheapestUnlockCharacter = cheapestCompletionByTotalCost
+        cheapestUnlockCost = cheapestCompletionTotal
+        currentUnlockCost = mainTotalCost
+    end
 
     return {
         trackName = trackName,
