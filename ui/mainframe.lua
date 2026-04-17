@@ -3,7 +3,7 @@ local addonName, CrestPlanner = ...
 local MainFrame = {}
 CrestPlanner.MainFrame = MainFrame
 
-local TAB_ORDER = { "Veteran", "Champion", "Hero", "Myth", "Summary" }
+local TAB_ORDER = { "Veteran", "Champion", "Hero", "Myth", "Summary", "Bonus" }
 local Constants = CrestPlanner.Constants
 
 local COLORS = {
@@ -346,19 +346,33 @@ local function EnsureSummaryWidgets(frame)
     frame.summaryView:SetPoint("BOTTOMRIGHT", -8, 37)
     frame.summaryView:Hide()
 
-    -- Stat cards (3 cards, 8px gaps between)
+    -- Scroll frame for vertical overflow
+    local scroll = CreateFrame("ScrollFrame", nil, frame.summaryView, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", -22, 0)
+
+    local scrollChild = CreateFrame("Frame", nil, scroll)
+    scrollChild:SetWidth(700)  -- fixed; frame is 760 - 8 - 8 margins - 22 scrollbar = ~722
+    scrollChild:SetHeight(1)
+    scroll:SetScrollChild(scrollChild)
+    scroll:EnableMouseWheel(true)
+    frame.summaryView.scroll = scroll
+    frame.summaryView.scrollChild = scrollChild
+
+    -- All cards parent to scrollChild
+    local sc = scrollChild
     local statCardW = 240
     local statGap = 8
     frame.summaryView.statCards = {}
-    frame.summaryView.statCards[1] = CreateStatCard(frame.summaryView, 0, "Total crests needed")
-    frame.summaryView.statCards[2] = CreateStatCard(frame.summaryView, statCardW + statGap, "Saved by optimal order")
-    frame.summaryView.statCards[3] = CreateStatCard(frame.summaryView, (statCardW + statGap) * 2, "Weeks at cap")
+    frame.summaryView.statCards[1] = CreateStatCard(sc, 0, "Total crests needed")
+    frame.summaryView.statCards[2] = CreateStatCard(sc, statCardW + statGap, "Saved by optimal order")
+    frame.summaryView.statCards[3] = CreateStatCard(sc, (statCardW + statGap) * 2, "Weeks at cap")
     for i = 1, 3 do
         frame.summaryView.statCards[i]:SetWidth(statCardW)
     end
 
     -- Weekly outlook card
-    local oc = CreateFrame("Frame", nil, frame.summaryView)
+    local oc = CreateFrame("Frame", nil, sc)
     oc:SetPoint("TOPLEFT", 0, -80)
     oc:SetPoint("RIGHT", 0, 0)
     oc:SetHeight(180)
@@ -376,7 +390,7 @@ local function EnsureSummaryWidgets(frame)
     frame.summaryView.outlookCard = oc
 
     -- Priority order card
-    local pc = CreateFrame("Frame", nil, frame.summaryView)
+    local pc = CreateFrame("Frame", nil, sc)
     pc:SetPoint("TOPLEFT", 0, -268)
     pc:SetPoint("RIGHT", 0, 0)
     pc:SetHeight(180)
@@ -395,10 +409,101 @@ local function EnsureSummaryWidgets(frame)
 end
 
 ---------------------------------------------------------------------------
+-- Bonus view widgets
+---------------------------------------------------------------------------
+local function EnsureBonusWidgets(frame)
+    if frame.bonusView then
+        return
+    end
+
+    frame.bonusView = CreateFrame("Frame", nil, frame)
+    frame.bonusView:SetPoint("TOPLEFT", 8, -37)
+    frame.bonusView:SetPoint("BOTTOMRIGHT", -8, 37)
+    frame.bonusView:Hide()
+
+    local bc = frame.bonusView
+
+    bc.title = bc:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    bc.title:SetPoint("TOPLEFT", 10, -8)
+    bc.title:SetText(C(COLORS.section, "BONUS CRESTS"))
+
+    bc.subtitle = bc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    bc.subtitle:SetPoint("TOPLEFT", 10, -24)
+    bc.subtitle:SetText(C(COLORS.muted, "Uncapped crests from one-time quests and boss kills"))
+
+    -- Character name headers (up to 6)
+    bc.charHeaders = {}
+    for i = 1, 6 do
+        local header = bc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        header:SetWidth(56)
+        header:SetJustifyH("LEFT")
+        header:SetWordWrap(false)
+        header:Hide()
+        bc.charHeaders[i] = header
+    end
+
+    -- Source rows (up to 8)
+    bc.sourceRows = {}
+    for i = 1, 8 do
+        local row = CreateFrame("Frame", nil, bc)
+        row:SetHeight(30)
+        row:SetPoint("TOPLEFT", 10, -56 - ((i - 1) * 34))
+        row:SetPoint("RIGHT", -10, 0)
+        row:EnableMouse(true)
+
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        row.bg:SetColorTexture(0.06, 0.08, 0.11, (i % 2 == 0) and 0.5 or 0)
+
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.label:SetPoint("LEFT", 0, 0)
+        row.label:SetWidth(130)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+
+        row.reward = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.reward:SetPoint("RIGHT", 0, 0)
+        row.reward:SetWidth(100)
+        row.reward:SetJustifyH("RIGHT")
+
+        -- Per-character status marks (up to 6)
+        row.marks = {}
+        for j = 1, 6 do
+            local mark = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            mark:SetWidth(56)
+            mark:SetJustifyH("LEFT")
+            mark:Hide()
+            row.marks[j] = mark
+        end
+
+        -- Tooltip on hover shows the full hint text
+        row:SetScript("OnEnter", function(self)
+            if self._hint and self._hint ~= "" then
+                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+                GameTooltip:SetText(self._labelText or "", 1, 1, 1)
+                GameTooltip:AddLine(self._hint, 0.7, 0.82, 0.8, true)
+                GameTooltip:Show()
+            end
+        end)
+        row:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        row:Hide()
+        bc.sourceRows[i] = row
+    end
+
+    bc.footer = bc:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    bc.footer:SetPoint("BOTTOMLEFT", 10, 10)
+    bc.footer:SetPoint("RIGHT", -10, 0)
+    bc.footer:SetJustifyH("LEFT")
+end
+
+---------------------------------------------------------------------------
 -- Tab helpers
 ---------------------------------------------------------------------------
 local function IsTrackTab(tabName)
-    return tabName ~= "Summary"
+    return tabName ~= "Summary" and tabName ~= "Bonus"
 end
 
 local function GetTrackResult(self, trackName)
@@ -425,7 +530,7 @@ local function ApplyTabVisual(tab, isSelected)
 end
 
 local function TrackHasWork(self, trackName)
-    if trackName == "Summary" then
+    if trackName == "Summary" or trackName == "Bonus" then
         return true
     end
     local result = GetTrackResult(self, trackName)
@@ -820,7 +925,111 @@ local function RenderSummaryView(self)
         end
     end
 
-    pc:SetHeight(34 + (maxPriority * 36))
+    local priorityHeight = 34 + (maxPriority * 36)
+    pc:SetHeight(priorityHeight)
+
+    -- Update scroll child height so scrollbar works
+    local totalHeight = 80 + outlookHeight + 8 + priorityHeight + 16
+    if self.frame.summaryView.scrollChild then
+        self.frame.summaryView.scrollChild:SetHeight(totalHeight)
+    end
+end
+
+---------------------------------------------------------------------------
+-- Bonus view rendering
+---------------------------------------------------------------------------
+local function RenderBonusView(self)
+    if self.frame.trackView then self.frame.trackView:Hide() end
+    if self.frame.summaryView then self.frame.summaryView:Hide() end
+    EnsureBonusWidgets(self.frame)
+    self.frame.bonusView:Show()
+
+    local bc = self.frame.bonusView
+    local sources = Constants.BONUS_CREST_SOURCES or {}
+    local characters = CrestPlanner.Scanner:GetWarbandCharacters()
+    local minLevel = Constants.MIN_CHARACTER_LEVEL or 0
+
+    -- Build filtered character list
+    local bonusChars = {}
+    for key, char in pairs(characters) do
+        if (char.level or 0) >= minLevel then
+            bonusChars[#bonusChars + 1] = {
+                key = key,
+                name = char.name or key,
+                bonusStatus = char.bonusStatus or {},
+            }
+        end
+    end
+    table.sort(bonusChars, function(a, b) return a.name < b.name end)
+    local maxChars = math.min(6, #bonusChars)
+
+    -- Position character name headers.
+    -- Rows have a 10px left margin, so marks live at row.left + colStart.
+    -- Headers are anchored to bc directly, so offset by 10 to match.
+    local colStart = 140
+    local colWidth = 56
+    local headerX = 10 + colStart  -- 10 = row left margin
+    for i = 1, 6 do
+        local header = bc.charHeaders[i]
+        if i <= maxChars then
+            header:ClearAllPoints()
+            header:SetPoint("TOPLEFT", bc, "TOPLEFT", headerX + ((i - 1) * colWidth), -38)
+            header:SetText(C(COLORS.muted, bonusChars[i].name))
+            header:Show()
+        else
+            header:Hide()
+        end
+    end
+
+    -- Render source rows
+    local maxSources = math.min(8, #sources)
+    local totalUnclaimed = 0
+    for i = 1, 8 do
+        local row = bc.sourceRows[i]
+        if i <= maxSources then
+            local source = sources[i]
+            row._labelText = source.label or "Unknown"
+            row._hint = source.hint or ""
+            row.label:SetText(source.label or "Unknown")
+
+            -- Build reward text
+            local rewardParts = {}
+            for crestType, amount in pairs(source.crests or {}) do
+                rewardParts[#rewardParts + 1] = amount .. " " .. crestType
+            end
+            local freqTag = source.frequency == "weekly" and " (wk)" or ""
+            row.reward:SetText(C(COLORS.muted, table.concat(rewardParts, " + ") .. freqTag))
+
+            -- Per-character marks
+            for j = 1, 6 do
+                local mark = row.marks[j]
+                if j <= maxChars then
+                    mark:ClearAllPoints()
+                    mark:SetPoint("LEFT", row, "LEFT", colStart + ((j - 1) * colWidth), 0)
+                    local completed = bonusChars[j].bonusStatus[source.id] or false
+                    if completed then
+                        mark:SetText("|cff5cff7aDone|r")
+                    else
+                        mark:SetText("|cffff5555Miss|r")
+                        totalUnclaimed = totalUnclaimed + 1
+                    end
+                    mark:Show()
+                else
+                    mark:Hide()
+                end
+            end
+
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+
+    if totalUnclaimed > 0 then
+        bc.footer:SetText(C(COLORS.warn, string.format("%d unclaimed across your warband", totalUnclaimed)))
+    else
+        bc.footer:SetText(C(COLORS.good, "All bonus crests claimed!"))
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -1040,6 +1249,7 @@ function MainFrame:Render(tabName)
     if minLevel > 0 and playerLevel > 0 and playerLevel < minLevel then
         if self.frame.trackView then self.frame.trackView:Hide() end
         if self.frame.summaryView then self.frame.summaryView:Hide() end
+        if self.frame.bonusView then self.frame.bonusView:Hide() end
         for _, tab in ipairs(self.frame.tabs or {}) do tab:Hide() end
         self.frame.levelGate.title:SetText(string.format("Reach level %d to activate", minLevel))
         self.frame.levelGate.subtitle:SetText(string.format("Currently level %d", playerLevel))
@@ -1055,10 +1265,19 @@ function MainFrame:Render(tabName)
     end
 
     if tabName == "Summary" then
+        if self.frame.bonusView then self.frame.bonusView:Hide() end
         RenderSummaryView(self)
         return
     end
 
+    if tabName == "Bonus" then
+        if self.frame.trackView then self.frame.trackView:Hide() end
+        if self.frame.summaryView then self.frame.summaryView:Hide() end
+        RenderBonusView(self)
+        return
+    end
+
+    if self.frame.bonusView then self.frame.bonusView:Hide() end
     RenderTrackView(self, tabName)
 end
 

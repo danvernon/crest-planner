@@ -127,3 +127,38 @@ Constants.ILVL_TO_TRACK_RANK = {
     { 286, 288, "Myth", 5, 6 },
     { 289, 289, "Myth", 6, 6 },
 }
+
+-- Bonus crest sources that don't count toward the weekly cap.
+-- checkType: "quest" uses C_QuestLog.IsQuestFlaggedCompleted(checkID)
+--            "achievement" uses GetAchievementInfo(checkID) completed flag
+-- frequency: "weekly" resets each week, "once" is one-time per character
+-- Update this list each season as new sources are added/removed.
+Constants.BONUS_CREST_SOURCES = {
+    {
+        id = "cracked_keystone",
+        label = "Cracked Keystone",
+        hint = "Complete a Tier 11 Delve for the keystone, then finish a Mythic+ 2 or higher.",
+        checkType = "quest",
+        checkID = 92600,
+        crests = { Hero = 20, Myth = 20 },
+        frequency = "once",
+    },
+    {
+        id = "nullaeus_normal",
+        label = "Nullaeus",
+        hint = "Defeat the Delve Nemesis boss on normal difficulty.",
+        checkType = "achievement",
+        checkID = 61797,
+        crests = { Hero = 30 },
+        frequency = "once",
+    },
+    {
+        id = "nullaeus_hard",
+        label = "Nullaeus (Hard)",
+        hint = "Defeat the Delve Nemesis boss on hard difficulty.",
+        checkType = "achievement",
+        checkID = 61798,
+        crests = { Myth = 30 },
+        frequency = "once",
+    },
+}

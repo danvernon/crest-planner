@@ -418,6 +418,20 @@ function Scanner:ScanCurrentCharacter()
     else
         CrestPlannerDB.characters[key].bagItems = CrestPlannerDB.characters[key].bagItems or {}
     end
+    -- Scan bonus crest source completion (quests and achievements)
+    local bonusStatus = {}
+    for _, source in ipairs(Constants.BONUS_CREST_SOURCES or {}) do
+        local completed = false
+        if source.checkType == "quest" and C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted then
+            completed = C_QuestLog.IsQuestFlaggedCompleted(source.checkID) or false
+        elseif source.checkType == "achievement" and GetAchievementInfo then
+            local _, _, _, achCompleted = GetAchievementInfo(source.checkID)
+            completed = achCompleted == true
+        end
+        bonusStatus[source.id] = completed
+    end
+    CrestPlannerDB.characters[key].bonusStatus = bonusStatus
+
     local scanTime = time()
     CrestPlannerDB.characters[key].lastScan = scanTime
 
