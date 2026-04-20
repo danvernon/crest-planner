@@ -661,9 +661,11 @@ local function RenderTrackView(self, trackName)
     else
         for i, action in ipairs(result.mainUpgradeActions or {}) do
             if i <= 4 then
+                local prefix = action.source == "bag"
+                    and string.format("Equip bag item then upgrade %s", result.mainName or "this character")
+                    or  string.format("Upgrade %s", result.mainName or "this character")
                 actions[#actions + 1] = {
-                    text = string.format("Upgrade %s \226\128\148 %s slot",
-                        result.mainName or "this character", action.slotName or "?"),
+                    text = string.format("%s \226\128\148 %s slot", prefix, action.slotName or "?"),
                     cost = string.format("%d %s crests", action.cost or 0, trackName),
                 }
             end
@@ -1107,7 +1109,7 @@ function MainFrame:Create()
     frame.title:SetPoint("LEFT", frame.titleIcon, "RIGHT", 6, 0)
     frame.title:SetText("Crest Planner")
 
-    -- Close button
+    -- Close button (created first so season dropdown can anchor to it)
     frame.close = CreateFrame("Button", nil, frame)
     frame.close:SetPoint("TOPRIGHT", -6, -5)
     frame.close:SetSize(18, 18)
@@ -1129,6 +1131,143 @@ function MainFrame:Create()
         frame.close.bg:SetColorTexture(0.0, 0.0, 0.0, 0)
         frame.close.label:SetTextColor(1, 1, 1)
     end)
+
+    -- Season dropdown (top bar, left of close button)
+    do
+        local ROW_H    = 22
+        local BTN_W    = 112
+        local BTN_H    = 18
+
+        -- Dropdown panel — parented to UIParent so it floats above the modal.
+        local panel = CreateFrame("Frame", nil, UIParent)
+        panel:SetFrameStrata("FULLSCREEN_DIALOG")
+        panel:SetFrameLevel(200)
+        panel:SetWidth(BTN_W)
+        panel:Hide()
+
+        panel.bg = panel:CreateTexture(nil, "BACKGROUND")
+        panel.bg:SetAllPoints()
+        panel.bg:SetColorTexture(0.05, 0.07, 0.1, 0.98)
+
+        panel.border = panel:CreateTexture(nil, "BORDER")
+        panel.border:SetPoint("TOPLEFT",     0,  0)
+        panel.border:SetPoint("BOTTOMRIGHT", 0,  0)
+        panel.border:SetColorTexture(0, 0.82, 0.76, 0.35)
+
+        panel.rows = {}
+
+        local function RebuildPanel(anchorBtn)
+            local order = Constants.SEASON_ORDER or {}
+            panel:SetHeight(#order * ROW_H + 2)
+            panel:ClearAllPoints()
+            panel:SetPoint("TOPRIGHT", anchorBtn, "BOTTOMRIGHT", 0, -2)
+
+            for i, key in ipairs(order) do
+                if not panel.rows[i] then
+                    local row = CreateFrame("Button", nil, panel)
+                    row:SetHeight(ROW_H)
+                    row:SetPoint("TOPLEFT",  1, -1 - (i - 1) * ROW_H)
+                    row:SetPoint("TOPRIGHT", -1, -1 - (i - 1) * ROW_H)
+
+                    row.hl = row:CreateTexture(nil, "BACKGROUND")
+                    row.hl:SetAllPoints()
+                    row.hl:SetColorTexture(0.1, 0.2, 0.22, 0)
+
+                    row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    row.text:SetPoint("LEFT", 8, 0)
+                    row.text:SetPoint("RIGHT", -8, 0)
+                    row.text:SetJustifyH("LEFT")
+
+                    row:SetScript("OnEnter", function() row.hl:SetColorTexture(0.1, 0.2, 0.22, 0.9) end)
+                    row:SetScript("OnLeave", function() row.hl:SetColorTexture(0.1, 0.2, 0.22, 0) end)
+                    panel.rows[i] = row
+                end
+
+                local row    = panel.rows[i]
+                local season = Constants.SEASONS[key]
+                local lbl    = (season and season.label) or key
+                local active = key == Constants.ACTIVE_SEASON
+                local season = Constants.SEASONS[key]
+                local soon  = season and season.comingSoon
+                if active then
+                    row.text:SetText(C(COLORS.good, lbl))
+                elseif soon then
+                    row.text:SetText(C(COLORS.muted, lbl .. " (soon)"))
+                else
+                    row.text:SetText(C(COLORS.muted, lbl))
+                end
+                row:SetScript("OnClick", function()
+                    Constants.ApplySeason(key)
+                    if CrestPlannerDB then CrestPlannerDB.activeSeason = key end
+                    if not soon then
+                        CrestPlanner.Scanner:ScanCurrentCharacter()
+                    end
+                    panel:Hide()
+                    MainFrame:Render(MainFrame.selectedTabName)
+                end)
+                row:Show()
+            end
+
+            -- Hide stale rows beyond current season count
+            for i = #(Constants.SEASON_ORDER or {}) + 1, #panel.rows do
+                if panel.rows[i] then panel.rows[i]:Hide() end
+            end
+        end
+
+        -- Click-off blocker: a transparent frame behind the panel that eats
+        -- mouse events outside the dropdown.
+        local blocker = CreateFrame("Frame", nil, UIParent)
+        blocker:SetAllPoints(UIParent)
+        blocker:SetFrameStrata("FULLSCREEN_DIALOG")
+        blocker:SetFrameLevel(199)
+        blocker:EnableMouse(true)
+        blocker:Hide()
+        blocker:SetScript("OnMouseDown", function()
+            panel:Hide()
+            blocker:Hide()
+        end)
+        panel:HookScript("OnShow", function() blocker:Show() end)
+        panel:HookScript("OnHide", function() blocker:Hide() end)
+
+        -- The visible dropdown button in the top bar
+        local btn = CreateFrame("Button", nil, frame)
+        btn:SetSize(BTN_W, BTN_H)
+        btn:SetPoint("RIGHT", frame.close, "LEFT", -8, 0)
+
+        btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+        btn.bg:SetAllPoints()
+        btn.bg:SetColorTexture(0.08, 0.11, 0.14, 0.8)
+
+        btn.border = btn:CreateTexture(nil, "BORDER")
+        btn.border:SetAllPoints()
+        btn.border:SetColorTexture(0, 0.82, 0.76, 0.2)
+
+        btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        btn.label:SetPoint("LEFT", 6, 0)
+        btn.label:SetPoint("RIGHT", -6, 0)
+        btn.label:SetJustifyH("LEFT")
+
+        btn:SetScript("OnEnter", function()
+            if #(Constants.SEASON_ORDER or {}) > 1 then
+                btn.bg:SetColorTexture(0.12, 0.18, 0.22, 0.9)
+            end
+        end)
+        btn:SetScript("OnLeave", function()
+            btn.bg:SetColorTexture(0.08, 0.11, 0.14, 0.8)
+        end)
+        btn:SetScript("OnClick", function()
+            if #(Constants.SEASON_ORDER or {}) <= 1 then return end
+            if panel:IsShown() then
+                panel:Hide()
+            else
+                RebuildPanel(btn)
+                panel:Show()
+            end
+        end)
+
+        frame.seasonDropdown     = btn
+        frame.seasonDropdownPanel = panel
+    end
 
     -- Tabs (at top, below top bar)
     frame.tabs = {}
@@ -1211,8 +1350,17 @@ end
 ---------------------------------------------------------------------------
 -- Public API
 ---------------------------------------------------------------------------
+local function RefreshSeasonSelector(frame)
+    if not frame.seasonDropdown then return end
+    local current = Constants.ACTIVE_SEASON
+    local season  = current and Constants.SEASONS and Constants.SEASONS[current]
+    local lbl     = (season and season.label) or current or "Season"
+    frame.seasonDropdown.label:SetText(C(COLORS.value, lbl))
+end
+
 function MainFrame:Render(tabName)
     self._renderCache = {}
+    RefreshSeasonSelector(self.frame)
 
     -- Ensure the level gate exists (self-healing if frame predates overlay code)
     if not self.frame.levelGate then
@@ -1258,6 +1406,21 @@ function MainFrame:Render(tabName)
     end
 
     self.frame.levelGate:Hide()
+
+    -- Coming-soon overlay: active season not yet released.
+    local activeSeason = Constants.SEASONS and Constants.SEASONS[Constants.ACTIVE_SEASON]
+    if activeSeason and activeSeason.comingSoon then
+        if self.frame.trackView  then self.frame.trackView:Hide()  end
+        if self.frame.summaryView then self.frame.summaryView:Hide() end
+        if self.frame.bonusView  then self.frame.bonusView:Hide()  end
+
+        -- Reuse levelGate frame as the overlay (same style).
+        self.frame.levelGate.title:SetText(activeSeason.label .. " — Coming Soon")
+        self.frame.levelGate.subtitle:SetText("Season data will be added when it releases.")
+        self.frame.levelGate:Show()
+        RefreshSeasonSelector(self.frame)
+        return
+    end
 
     RefreshTabVisibility(self)
     if tabName ~= self.selectedTabName then

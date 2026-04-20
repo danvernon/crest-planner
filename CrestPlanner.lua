@@ -4,6 +4,10 @@ CrestPlanner.events = CreateFrame("Frame")
 local rescanQueued = false
 
 local function Initialize()
+    -- Restore the last-used season from SavedVariables before anything else runs.
+    if CrestPlannerDB and CrestPlannerDB.activeSeason then
+        CrestPlanner.Constants.ApplySeason(CrestPlannerDB.activeSeason)
+    end
     CrestPlanner.Tooltip:Enable()
 end
 
@@ -51,6 +55,63 @@ SlashCmdList.CRESTPLANNER = function(msg)
             print("|cff00d1c1CrestPlanner:|r Removed " .. arg)
         else
             print("|cff00d1c1CrestPlanner:|r No character with key " .. arg)
+        end
+        return
+    end
+
+    if cmd == "season" then
+        local order = CrestPlanner.Constants.SEASON_ORDER or {}
+        if arg and arg ~= "" then
+            -- Try exact key match first, then partial label match
+            local matched
+            for _, key in ipairs(order) do
+                local season = CrestPlanner.Constants.SEASONS[key]
+                if key:lower() == arg or (season and season.label:lower():find(arg, 1, true)) then
+                    matched = key
+                    break
+                end
+            end
+            if matched then
+                CrestPlanner.Constants.ApplySeason(matched)
+                if CrestPlannerDB then CrestPlannerDB.activeSeason = matched end
+                CrestPlanner.Scanner:ScanCurrentCharacter()
+                local season = CrestPlanner.Constants.SEASONS[matched]
+                print("|cff00d1c1CrestPlanner:|r Season set to " .. (season and season.label or matched))
+            else
+                print("|cff00d1c1CrestPlanner:|r Unknown season '" .. arg .. "'")
+            end
+        else
+            print("|cff00d1c1CrestPlanner:|r Active season: " .. (CrestPlanner.Constants.ACTIVE_SEASON or "?"))
+            print("|cff00d1c1CrestPlanner:|r Available seasons:")
+            for _, key in ipairs(order) do
+                local s = CrestPlanner.Constants.SEASONS[key]
+                local active = key == CrestPlanner.Constants.ACTIVE_SEASON and " |cff5cff7a[active]|r" or ""
+                print(string.format("  %s — %s%s", key, (s and s.label or "?"), active))
+            end
+        end
+        return
+    end
+
+    if cmd == "debug" and arg == "bags" then
+        local key = CrestPlanner.GetCurrentCharacterKey()
+        local db = CrestPlannerDB and CrestPlannerDB.characters and CrestPlannerDB.characters[key]
+        if not db or not db.bagItems or #db.bagItems == 0 then
+            print("|cff00d1c1CrestPlanner:|r No bag item data for " .. key .. " — open your bags and /reload")
+            return
+        end
+        print("|cff00d1c1CrestPlanner Debug:|r Bag items (equippable) for " .. key .. " — " .. #db.bagItems .. " found")
+        for i, item in ipairs(db.bagItems) do
+            local trackStatus
+            if item.trackName == "Unknown" then
+                trackStatus = "|cffff5555Unknown track|r"
+            elseif (item.currentRank or 0) >= (item.maxRank or 0) and (item.maxRank or 0) > 0 then
+                trackStatus = "|cff5cff7a" .. item.trackName .. " " .. item.currentRank .. "/" .. item.maxRank .. " (max)|r"
+            else
+                trackStatus = "|cffffc857" .. item.trackName .. " " .. (item.currentRank or 0) .. "/" .. (item.maxRank or 0) .. "|r"
+            end
+            local slots = table.concat(item.slotOptions or {}, "/")
+            print(string.format("  [%d] %s ilvl %d | %s | fits: %s",
+                i, item.itemLink or "?", item.itemLevel or 0, trackStatus, slots))
         end
         return
     end

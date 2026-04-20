@@ -1,5 +1,15 @@
 # CrestPlanner
 
+## [v0.1.9](https://github.com/danvernon/crest-planner/tree/v0.1.9) (2026-04-20)
+[Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.8...v0.1.9) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
+
+- **Season selector dropdown** in the top bar (left of close button); Midnight S2 shown as "coming soon"
+- Season data restructured into a per-season registry — adding future seasons requires only a new constants block
+- Active season persisted in SavedVariables and restored on login
+- `/cp season` slash command to list or switch seasons
+- Action rows now say **"Equip bag item then upgrade"** when the optimiser has chosen a bag item over the currently equipped piece
+- `/cp debug bags` — new command showing all scanned equippable bag items with track, rank, ilvl and slot for diagnostics
+
 ## [v0.1.8](https://github.com/danvernon/crest-planner/tree/v0.1.8) (2026-04-17)
 [Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.7...v0.1.8) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
 
