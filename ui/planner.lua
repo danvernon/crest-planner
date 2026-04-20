@@ -49,6 +49,10 @@ local function BuildOutlookSubtitle(trackResult)
     local discountPct = math.floor((Constants.DISCOUNT_RATE or 0.50) * 100 + 0.5)
 
     if trackResult.altFirstIsBetter then
+        local altCost = trackResult.altUnlockCost
+        if altCost and altCost < math.huge and altCost > 0 then
+            return string.format("Upgrade another character first (%d crests) for %d%% discount", altCost, discountPct)
+        end
         return string.format("Upgrade another character first for %d%% discount", discountPct)
     end
 
@@ -120,6 +124,22 @@ local function BuildPriorityActions(allTrackResults)
                     sortKey = 1,
                     trackName = trackName,
                 }
+
+                -- Follow-up: finish main character at discount after alt unlocks it.
+                local discountedMainCost = (result.scenarioB and result.scenarioB < math.huge)
+                    and math.max(0, result.scenarioB - altCost) or nil
+                if discountedMainCost and discountedMainCost > 0 then
+                    local discountPct = math.floor((Constants.DISCOUNT_RATE or 0.50) * 100 + 0.5)
+                    actions[#actions + 1] = {
+                        text = string.format(
+                            "Then finish %s %s slots at %d%% discount",
+                            mainName, trackName, discountPct
+                        ),
+                        cost = string.format("%d crests", discountedMainCost),
+                        sortKey = 1,
+                        trackName = trackName,
+                    }
+                end
             end
         else
             local mainRow
@@ -137,7 +157,7 @@ local function BuildPriorityActions(allTrackResults)
                         "Finish %s's last %d %s slots - unlocks warband %s discount",
                         mainName, slotsToThreshold, trackName, trackName
                     ),
-                    cost = string.format("%d crests", result.scenarioA or 0),
+                    cost = string.format("%d crests", result.currentUnlockCost or result.scenarioA or 0),
                     sortKey = 1,
                     trackName = trackName,
                 }
@@ -218,10 +238,11 @@ function Planner:GetWeeklyPreview(allTrackResults)
                 optimal = result.scenarioC
             end
 
-            -- Character switching savings
+            -- Character switching savings (only add if no scenario savings already captured)
             if result.shouldSwitchCharacter and result.cheapestCompletionCost
                 and result.currentCompletionCost
-                and result.cheapestCompletionCost < result.currentCompletionCost then
+                and result.cheapestCompletionCost < result.currentCompletionCost
+                and optimal >= (result.scenarioA or 0) then
                 local switchSavings = result.currentCompletionCost - result.cheapestCompletionCost
                 if switchSavings > 0 then
                     totalSavings = totalSavings + switchSavings
@@ -244,7 +265,15 @@ function Planner:GetWeeklyPreview(allTrackResults)
                 resolvedWeeklyCap = weeklyCap
             end
 
-            local remaining = math.max(0, optimal - currentAmount)
+            -- For the alt-first strategy, show only the main character's portion
+            -- (excludes the alt's investment, which comes from a different crest pool).
+            local mainPortion = optimal
+            if result.altFirstIsBetter
+                and result.altUnlockCost and result.altUnlockCost < math.huge
+                and result.scenarioB and result.scenarioB < math.huge then
+                mainPortion = math.max(0, result.scenarioB - result.altUnlockCost)
+            end
+            local remaining = math.max(0, mainPortion - currentAmount)
             local weeksForTrack
             if remaining == 0 then
                 weeksForTrack = 0
@@ -286,7 +315,8 @@ function Planner:GetWeeklyPreview(allTrackResults)
                 outlookRows[#outlookRows + 1] = {
                     trackName = trackName,
                     held = currentAmount,
-                    needed = optimal,
+                    needed = remaining,       -- crests still to earn (main character's portion minus held)
+                    total = mainPortion,      -- main character's total portion for this track
                     weeks = weeksForTrack,
                     subtitle = BuildOutlookSubtitle(result),
                     discountActive = discountActive,

@@ -66,6 +66,10 @@ local function EvaluateItemForTargetTrack(item, targetTrackName, discountActive)
         return "unknown", 0, false
     end
 
+    if (item.maxRank or 0) <= 0 then
+        return "unknown", 0, false
+    end
+
     local itemOrder = TrackOrder(item.trackName)
     local targetOrder = TrackOrder(targetTrackName)
     if not itemOrder or not targetOrder then

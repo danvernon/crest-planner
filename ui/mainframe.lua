@@ -541,6 +541,9 @@ local function TrackHasWork(self, trackName)
     if result.scenarioB and result.scenarioB < optimal then
         optimal = result.scenarioB
     end
+    if result.scenarioC and result.scenarioC < optimal then
+        optimal = result.scenarioC
+    end
     return optimal > 0
 end
 
@@ -653,10 +656,16 @@ local function RenderTrackView(self, trackName)
                 }
             end
         end
+        local discountedMainCost = (result.scenarioB and result.scenarioB < math.huge
+            and result.altUnlockCost and result.altUnlockCost < math.huge)
+            and math.max(0, result.scenarioB - result.altUnlockCost)
+            or nil
         actions[#actions + 1] = {
             text = string.format("Then upgrade %s at %s discount",
                 result.mainName or "this character", DiscountPctLabel()),
-            cost = string.format("saves %d crests", result.savings or 0),
+            cost = discountedMainCost
+                and string.format("%d crests", discountedMainCost)
+                or  string.format("saves %d crests", result.savings or 0),
         }
     else
         for i, action in ipairs(result.mainUpgradeActions or {}) do
@@ -880,11 +889,17 @@ local function RenderSummaryView(self)
                 row.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
             end
 
+            local neededText
+            if (data.needed or 0) == 0 then
+                neededText = "complete"
+            else
+                neededText = string.format("%d still needed", data.needed)
+            end
             row.mainText:SetText(string.format(
-                "%s \226\128\148 %d crests held, %d needed to finish",
+                "%s \226\128\148 %d crests held, %s",
                 C(COLORS.value, data.trackName),
                 data.held or 0,
-                data.needed or 0
+                neededText
             ))
 
             local subtitleColor = data.altFirstIsBetter and COLORS.warn or COLORS.muted
@@ -1399,6 +1414,7 @@ function MainFrame:Render(tabName)
         if self.frame.summaryView then self.frame.summaryView:Hide() end
         if self.frame.bonusView then self.frame.bonusView:Hide() end
         for _, tab in ipairs(self.frame.tabs or {}) do tab:Hide() end
+        self.frame.levelGate.icon:SetTexture("Interface\\Icons\\Spell_ChargePositive")
         self.frame.levelGate.title:SetText(string.format("Reach level %d to activate", minLevel))
         self.frame.levelGate.subtitle:SetText(string.format("Currently level %d", playerLevel))
         self.frame.levelGate:Show()
@@ -1410,11 +1426,22 @@ function MainFrame:Render(tabName)
     -- Coming-soon overlay: active season not yet released.
     local activeSeason = Constants.SEASONS and Constants.SEASONS[Constants.ACTIVE_SEASON]
     if activeSeason and activeSeason.comingSoon then
-        if self.frame.trackView  then self.frame.trackView:Hide()  end
+        if self.frame.trackView   then self.frame.trackView:Hide()   end
         if self.frame.summaryView then self.frame.summaryView:Hide() end
-        if self.frame.bonusView  then self.frame.bonusView:Hide()  end
+        if self.frame.bonusView   then self.frame.bonusView:Hide()   end
+        for _, tab in ipairs(self.frame.tabs or {}) do tab:Hide() end
 
-        -- Reuse levelGate frame as the overlay (same style).
+        -- Use the top-tier crest icon from the current active season's currency.
+        -- Falls back to the Myth currency from the previous season, then a generic coin.
+        local crestIcon
+        local prevSeason = Constants.SEASONS and Constants.SEASONS[Constants.SEASON_ORDER and Constants.SEASON_ORDER[1]]
+        local mythCurrencyID = prevSeason and prevSeason.CREST_CURRENCY_IDS and prevSeason.CREST_CURRENCY_IDS.Myth
+        if mythCurrencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+            local info = C_CurrencyInfo.GetCurrencyInfo(mythCurrencyID)
+            crestIcon = info and info.iconFileID
+        end
+        self.frame.levelGate.icon:SetTexture(crestIcon or "Interface\\Icons\\inv_misc_coin_17")
+
         self.frame.levelGate.title:SetText(activeSeason.label .. " — Coming Soon")
         self.frame.levelGate.subtitle:SetText("Season data will be added when it releases.")
         self.frame.levelGate:Show()
