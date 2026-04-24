@@ -140,6 +140,12 @@ local function CreateWarbandCharRow(parent, index)
     row.costText:SetPoint("BOTTOM", row.classIcon, "BOTTOM", 0, 0)
     row.costText:SetJustifyH("RIGHT")
 
+    row.completedText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.completedText:SetPoint("TOPLEFT", row.classIcon, "TOPRIGHT", 8, -18)
+    row.completedText:SetTextColor(0.36, 1, 0.48)
+    row.completedText:SetText("Complete")
+    row.completedText:Hide()
+
     return row
 end
 
@@ -246,6 +252,12 @@ local function EnsureTrackWidgets(frame)
     for i = 1, 4 do
         dc.discountRows[i] = CreateDiscountRow(dc, i)
     end
+
+    dc.activeText = dc:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    dc.activeText:SetPoint("TOPLEFT", 10, -28)
+    dc.activeText:SetTextColor(0.36, 1, 0.48)
+    dc.activeText:SetText("Warband discount active")
+    dc.activeText:Hide()
 
     dc.tip = dc:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     dc.tip:SetPoint("BOTTOMLEFT", 10, 10)
@@ -759,14 +771,27 @@ local function RenderTrackView(self, trackName)
 
             local total = math.max(1, data.totalSlots or 1)
             local atMax = data.slotsAtMax or 0
-            charRow.bar:SetMinMaxValues(0, total)
-            charRow.bar:SetValue(atMax)
+            local isDone = atMax >= total
 
-            local barColor = isAmber and COLORS.amberAccent or COLORS.greenAccent
-            charRow.bar:SetStatusBarColor(barColor[1] * 0.7, barColor[2] * 0.7, barColor[3] * 0.7)
-
-            charRow.ratio:SetText(C(COLORS.muted, string.format("%d / %d", atMax, total)))
-            charRow.costText:SetText(string.format("%d crests", data.crestNeeded or 0))
+            if isDone then
+                charRow.bar:Hide()
+                charRow.ratio:Hide()
+                charRow.costText:Hide()
+                charRow.realm:Hide()
+                charRow.completedText:Show()
+            else
+                charRow.bar:SetMinMaxValues(0, total)
+                charRow.bar:SetValue(atMax)
+                local barColor = isAmber and COLORS.amberAccent or COLORS.greenAccent
+                charRow.bar:SetStatusBarColor(barColor[1] * 0.7, barColor[2] * 0.7, barColor[3] * 0.7)
+                charRow.ratio:SetText(C(COLORS.muted, string.format("%d / %d", atMax, total)))
+                charRow.costText:SetText(string.format("%d crests", data.crestNeeded or 0))
+                charRow.bar:Show()
+                charRow.ratio:Show()
+                charRow.costText:Show()
+                charRow.realm:Show()
+                charRow.completedText:Hide()
+            end
             charRow:Show()
         else
             charRow:Hide()
@@ -775,52 +800,59 @@ local function RenderTrackView(self, trackName)
 
     -- Discount card
     local dc = self.frame.trackView.discountCard
-    local discountRowIndex = 0
-    local pctLabel = DiscountPctLabel()
-    for _, tn in ipairs({ "Veteran", "Champion", "Hero", "Myth" }) do
-        local discountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(tn)
-        if not discountActive then
-            discountRowIndex = discountRowIndex + 1
-            if discountRowIndex <= 4 then
-                local drow = dc.discountRows[discountRowIndex]
-                drow.label:SetText(tn)
+    local currentDiscountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(trackName)
 
-                local trackResult = GetTrackResult(self, tn)
-                local tnOrder = (Constants.TRACKS[tn] or {}).order or 0
+    if currentDiscountActive then
+        dc.activeText:Show()
+        for i = 1, 4 do dc.discountRows[i]:Hide() end
+    else
+        dc.activeText:Hide()
+        local discountRowIndex = 0
+        local pctLabel = DiscountPctLabel()
+        for _, tn in ipairs({ "Veteran", "Champion", "Hero", "Myth" }) do
+            local discountActive = CrestPlanner.Optimiser:IsDiscountAlreadyActive(tn)
+            if not discountActive then
+                discountRowIndex = discountRowIndex + 1
+                if discountRowIndex <= 4 then
+                    local drow = dc.discountRows[discountRowIndex]
+                    drow.label:SetText(tn)
 
-                -- Threshold = all slots for this character. Use main's totalSlots.
-                local mainSlotsNeeding = 0
-                local mainTotalSlots = 15
-                for _, wr in ipairs(trackResult.warbandRows or {}) do
-                    if wr.isMain then
-                        mainSlotsNeeding = wr.slotsNeeding or 0
-                        mainTotalSlots = wr.totalSlots or 15
-                        break
+                    local trackResult = GetTrackResult(self, tn)
+                    local tnOrder = (Constants.TRACKS[tn] or {}).order or 0
+
+                    local mainSlotsNeeding = 0
+                    local mainTotalSlots = 15
+                    for _, wr in ipairs(trackResult.warbandRows or {}) do
+                        if wr.isMain then
+                            mainSlotsNeeding = wr.slotsNeeding or 0
+                            mainTotalSlots = wr.totalSlots or 15
+                            break
+                        end
                     end
+                    local threshold = mainTotalSlots
+                    local remaining = mainSlotsNeeding
+
+                    drow.bar:SetMinMaxValues(0, threshold)
+                    drow.bar:SetValue(threshold - remaining)
+
+                    local currentTrackMeta = Constants.TRACKS[trackName]
+                    local currentOrder = currentTrackMeta and currentTrackMeta.order or 0
+
+                    if tnOrder == currentOrder then
+                        drow.bar:SetStatusBarColor(0.36, 1.0, 0.48)
+                    else
+                        drow.bar:SetStatusBarColor(0.3, 0.5, 0.7)
+                    end
+
+                    drow.info:SetText(C(COLORS.muted, string.format("%d slots until %s off", remaining, pctLabel)))
+                    drow:Show()
                 end
-                local threshold = mainTotalSlots
-                local remaining = mainSlotsNeeding
-
-                drow.bar:SetMinMaxValues(0, threshold)
-                drow.bar:SetValue(threshold - remaining)
-
-                local currentTrackMeta = Constants.TRACKS[trackName]
-                local currentOrder = currentTrackMeta and currentTrackMeta.order or 0
-
-                if tnOrder == currentOrder then
-                    drow.bar:SetStatusBarColor(0.36, 1.0, 0.48)
-                else
-                    drow.bar:SetStatusBarColor(0.3, 0.5, 0.7)
-                end
-
-                drow.info:SetText(C(COLORS.muted, string.format("%d slots until %s off", remaining, pctLabel)))
-                drow:Show()
             end
         end
-    end
 
-    for i = discountRowIndex + 1, 4 do
-        dc.discountRows[i]:Hide()
+        for i = discountRowIndex + 1, 4 do
+            dc.discountRows[i]:Hide()
+        end
     end
 
     -- Tip text

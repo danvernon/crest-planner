@@ -1,5 +1,11 @@
 # CrestPlanner
 
+## [v0.1.11](https://github.com/danvernon/crest-planner/tree/v0.1.11) (2026-04-24)
+[Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.10...v0.1.11) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
+
+- **Cleaner warband rows** — completed characters (all slots at max) now show just their avatar, name, and a green "Complete" label; progress bar and crest count are hidden
+- **Simpler discount panel** — when the current track's warband discount is already active, the progress bars are replaced with a single "Warband discount active" line
+
 ## [v0.1.10](https://github.com/danvernon/crest-planner/tree/v0.1.10) (2026-04-20)
 [Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.9...v0.1.10) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
 
