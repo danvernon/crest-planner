@@ -1,5 +1,11 @@
 # CrestPlanner
 
+## [v0.1.12](https://github.com/danvernon/crest-planner/tree/v0.1.12) (2026-04-27)
+[Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.11...v0.1.12) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
+
+- **"Enough crests to finish now" indicator** — track tab subtitle and Summary outlook rows both flag when you're already holding enough crests to complete the track without earning more
+- Summary outlook distinguishes between a fully-upgraded track ("complete") and a funded-but-not-yet-upgraded track ("enough crests held" / "ready")
+
 ## [v0.1.11](https://github.com/danvernon/crest-planner/tree/v0.1.11) (2026-04-24)
 [Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.10...v0.1.11) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
 

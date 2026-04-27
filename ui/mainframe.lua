@@ -651,8 +651,22 @@ local function RenderTrackView(self, trackName)
     local accentColor = isAmber and COLORS.amberAccent or COLORS.greenAccent
     ac.leftAccent:SetColorTexture(accentColor[1], accentColor[2], accentColor[3], accentColor[4])
 
-    ac.subtitle:SetText(C(isAmber and COLORS.warn or COLORS.good,
-        string.format("THIS WEEK \226\128\148 %s TRACK", trackName:upper())))
+    -- Check if the main character already holds enough crests to finish this track now.
+    local balances = CrestPlanner.Currency:GetCurrentCrestBalances()
+    local trackInfo = Constants.TRACKS[trackName] or {}
+    local currencyName = trackInfo.currencyName
+    local currency = currencyName and balances[currencyName] or nil
+    local heldCrests = currency and currency.amount or 0
+    local optimal = result.scenarioA or 0
+    if result.scenarioB and result.scenarioB < optimal then optimal = result.scenarioB end
+    if result.scenarioC and result.scenarioC < optimal then optimal = result.scenarioC end
+    local fundedNow = optimal > 0 and heldCrests >= optimal
+
+    local subtitleLine = string.format("THIS WEEK \226\128\148 %s TRACK", trackName:upper())
+    if fundedNow then
+        subtitleLine = subtitleLine .. "  \xC2\xB7 " .. C(COLORS.good, "enough crests to finish now")
+    end
+    ac.subtitle:SetText(C(isAmber and COLORS.warn or COLORS.good, subtitleLine))
 
     ac.heading:SetText(ActionCardHeading(result))
 
@@ -921,11 +935,18 @@ local function RenderSummaryView(self)
                 row.icon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
             end
 
+            local needed = data.needed or 0
+            local total  = data.total  or 0
+            local fullyDone   = total == 0
+            local fundedNow   = total > 0 and needed == 0
+
             local neededText
-            if (data.needed or 0) == 0 then
-                neededText = "complete"
+            if fullyDone then
+                neededText = C(COLORS.good, "complete")
+            elseif fundedNow then
+                neededText = C(COLORS.good, "enough crests held")
             else
-                neededText = string.format("%d still needed", data.needed)
+                neededText = string.format("%d still needed", needed)
             end
             row.mainText:SetText(string.format(
                 "%s \226\128\148 %d crests held, %s",
@@ -939,8 +960,10 @@ local function RenderSummaryView(self)
 
             if data.weeks == math.huge then
                 row.weeks:SetText(C(COLORS.muted, "N/A"))
-            elseif data.weeks == 0 then
+            elseif fullyDone then
                 row.weeks:SetText(C(COLORS.good, "done"))
+            elseif fundedNow then
+                row.weeks:SetText(C(COLORS.good, "ready"))
             else
                 row.weeks:SetText(C(COLORS.muted, string.format("~%d wks", data.weeks)))
             end
