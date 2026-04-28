@@ -1,93 +1,95 @@
 # Crest Planner
 
-World of Warcraft **Retail** addon that plans how to spend crests across your **warband** so your **current character** finishes Veteran → Champion → Hero → Myth upgrades with less total crest cost. It compares **current-character-first** versus **alt-first** paths when a warband discount can unlock on a track.
+**Warband crest optimisation planner for World of Warcraft retail.**
 
-**CurseForge:** [crest-planner](https://legacy.curseforge.com/wow/addons/crest-planner)
+Plan how to spend crests across your warband so you finish Veteran → Champion → Hero → Myth upgrades with the least total crest cost. The addon tracks every character you log in on, compares upgrade paths, and tells you exactly what to do this week.
 
-## Features
+**CurseForge:** [crest-planner](https://legacy.curseforge.com/wow/addons/crest-planner)  
+**Slash command:** `/cp`
 
-- Scans **equipped** and **bag** gear per character you log in on; stores snapshots in **SavedVariables** (`CrestPlannerDB`).
-- Per-track optimiser (Veteran, Champion, Hero, Myth): scenarios, savings, and a short **recommended action** list.
-- Main window **`/cp`**: track tabs, warband roster, discount progress, summary and weekly-style planning hints.
-- **Tooltips** on upgradeable items: track/rank, estimated crest-to-max, discount context, and notes when another character is cheaper for threshold progress.
-- Header branding uses `Textures/CrestPlannerLogo.tga` (WoW expects **TGA/BLP**, not PNG, for `SetTexture`).
+---
 
-## Requirements
+## What it does
 
-- Retail WoW with an interface version supported by the manifest (see `CrestPlanner.toc` `## Interface` lines).
+### Optimal upgrade path
+For each track (Veteran, Champion, Hero, Myth) the optimiser runs three scenarios:
 
-## Install
+- **Scenario A** — upgrade your current character at full price
+- **Scenario B** — upgrade an alt first to unlock the warband discount, then finish your main at 50% off
+- **Scenario C** — your main self-unlocks the discount, then finishes at 50% off
 
-1. Copy the `CrestPlanner` folder into:
+It picks the cheapest path and tells you what to do, in order.
+
+### Warband discount awareness
+The 50% warband discount unlocks when one character maxes all slots on a track. If an alt is closer to the threshold than your main, the addon will recommend upgrading the alt first and show you exactly how much you save.
+
+### Per-track tabs (Veteran / Champion / Hero / Myth)
+- Recommended action list with crest costs
+- Warband roster showing each character's slot progress and crests needed
+- Discount progress panel — how many slots until the 50% discount unlocks per track
+- "Enough crests to finish now" callout when your balance already covers the cost
+
+### Summary tab
+- Total crest cost across all tracks (optimal path)
+- Total savings vs upgrading naively
+- Weeks-to-completion estimate based on weekly cap
+- Per-track outlook: crests held, crests still needed, weeks at cap
+- Priority action list — the highest-value steps across all tracks this week
+
+### Bonus tab
+Tracks uncapped crest sources (one-time quests and boss kills) across your warband so you never miss free crests. Shows a per-character checklist with claimed/unclaimed status and a warband total.
+
+### Season selector
+Switch between seasons from the top bar. Midnight S2 is listed as coming soon — the addon will update when it releases.
+
+### Bag item scanning
+Scans equippable items in your bags. If a bag item is a better upgrade base than your equipped piece, the addon factors it into the plan and flags it with "Equip bag item then upgrade".
+
+### Item tooltips
+Hover any upgradeable item to see its track, current rank, estimated crests to max, and any warband discount context.
+
+---
+
+## Setup
+
+1. Install from CurseForge or copy the `CrestPlanner` folder into:  
    `World of Warcraft\_retail_\Interface\AddOns\`
-2. Enable **Crest Planner** in the AddOns list.
-3. Or install from CurseForge (link above) once the release is available to your client.
+2. Log in on each warband character once so their gear is scanned.
+3. Open the planner with **`/cp`**.
 
-## Usage
+Data updates automatically on login, equipment changes, and bag updates.
 
-- **`/cp`** — open or toggle the planner window.
+---
 
-Data updates when you log in, change equipment, or bags update (with a short debounce). Log each character once so the warband table is populated.
+## Slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/cp` | Open / close the planner |
+| `/cp chars` | List all scanned warband characters |
+| `/cp remove <name-realm>` | Remove a character record |
+| `/cp season` | List available seasons |
+| `/cp season <name>` | Switch to a season |
+| `/cp debug` | Show equipped item scan data for current character |
+| `/cp debug bags` | Show all scanned equippable bag items |
+
+---
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| `CrestPlanner.lua` | Entry: events, slash command, rescan scheduling |
-| `core/constants.lua` | Tracks, costs, thresholds, achievement IDs, currency IDs |
-| `core/scanner.lua` | Gear scan + tooltip parsing |
-| `core/optimiser.lua` | Cost and ordering logic |
-| `core/currency.lua` | Crest balances |
+| `CrestPlanner.lua` | Entry point: events, slash commands, rescan scheduling |
+| `core/constants.lua` | Season registry, tracks, costs, achievement IDs, currency IDs |
+| `core/scanner.lua` | Gear scan, tooltip parsing, bonus source tracking |
+| `core/optimiser.lua` | Scenario cost and ordering logic |
+| `core/currency.lua` | Crest balance queries |
 | `core/utils.lua` | Character key helpers |
-| `ui/mainframe.lua` | Main UI |
-| `ui/tooltip.lua` | Tooltip hooks |
-| `ui/planner.lua` | Summary / weekly preview |
-| `Textures/` | Logo and other UI textures |
+| `ui/mainframe.lua` | Main window, all tabs |
+| `ui/tooltip.lua` | Item tooltip hooks |
+| `ui/planner.lua` | Summary and weekly preview logic |
+| `Textures/` | UI textures |
 
-## Version
+## Automated releases
 
-See `## Version` in `CrestPlanner.toc`.
-
-## Automated releases (GitHub Actions + CurseForge)
-
-This repo uses [BigWigsMods/packager](https://github.com/BigWigsMods/packager) to build a correct `CrestPlanner/` zip and upload to CurseForge when you push a **version tag**.
-
-### One-time setup
-
-1. **CurseForge project ID**  
-   On your addon’s CurseForge page, open **About** (or project settings) and copy the numeric **Project ID**. Add a line to `CrestPlanner.toc` (anywhere with the other `##` headers):
-
-   `## X-Curse-Project-ID: 1513294`
-
-2. **CurseForge API key**  
-   CurseForge → your profile → **API Tokens** → create a token with upload scope. In the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**  
-   - Name: `CF_API_KEY`  
-   - Value: the token  
-
-3. **Workflow permissions**  
-   **Settings → Actions → General → Workflow permissions** → choose **Read and write** (so the packager can create GitHub Releases). This matches what the [packager wiki](https://github.com/BigWigsMods/packager/wiki/GitHub-Actions-workflow) describes for `GITHUB_TOKEN`.
-
-### Ship a release
-
-1. Bump `## Version` in `CrestPlanner.toc` (e.g. `0.1.1`).
-2. Commit and push to `master` (or your default branch).
-3. Create and push an annotated tag whose name starts with `v`, for example:
-
-   `git tag -a v0.1.1 -m "0.1.1"`  
-   `git push origin v0.1.1`
-
-The **Package and release** workflow runs, uploads to CurseForge, and can attach a GitHub Release.
-
-### Versioning and tag naming (keep the file list clean)
-
-- **One release = one tag.** Tag name must match `## Version` in `CrestPlanner.toc` (e.g. version `0.1.2` → tag `v0.1.2`).
-- Use **annotated** tags only: `git tag -a v0.1.2 -m "0.1.2"` (not lightweight tags).
-- **Never re-use** a tag name. If you pushed a bad tag, delete it on GitHub and locally, then tag again with the next version.
-- **Changelog:** paste user-facing notes into the CurseForge file changelog when you publish a new file (the packager uploads the zip; CurseForge is where players read what changed).
-- **Workflow_dispatch:** use only for smoke tests; it does not replace a version bump + tag for a real release.
-
-**Manual run:** **Actions → Package and release → Run workflow** (`workflow_dispatch`) uploads a **CurseForge Alpha** build from the current `master` tip (useful for smoke tests). **Real releases** should always be done by pushing a `v*` tag (those upload as **CurseForge Release** unless the tag name contains `alpha` / `beta`).
-
-## License
-
-See your CurseForge project license (e.g. All Rights Reserved) unless you add a `LICENSE` file here for open source.
+Tags matching `v*` trigger the BigWigsMods packager workflow, which builds the zip and uploads to CurseForge automatically.
