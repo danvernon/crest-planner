@@ -764,7 +764,16 @@ local function RenderTrackView(self, trackName)
         end
     end
     table.sort(warbandRows, function(a, b)
+        -- Main always first
         if a.isMain ~= b.isMain then return a.isMain end
+        -- Completed characters (0 crests needed) go to the bottom
+        local aDone = (a.crestNeeded or 0) == 0
+        local bDone = (b.crestNeeded or 0) == 0
+        if aDone ~= bDone then return bDone end
+        -- Otherwise sort by least crests needed first
+        if (a.crestNeeded or 0) ~= (b.crestNeeded or 0) then
+            return (a.crestNeeded or 0) < (b.crestNeeded or 0)
+        end
         return a.name < b.name
     end)
 

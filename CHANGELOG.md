@@ -1,5 +1,10 @@
 # CrestPlanner
 
+## [v0.1.13](https://github.com/danvernon/crest-planner/tree/v0.1.13) (2026-04-30)
+[Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.12...v0.1.13) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
+
+- **Warband row sorting** — characters now sort by least crests needed first (most actionable at the top), with completed characters pinned to the bottom; main character always first
+
 ## [v0.1.12](https://github.com/danvernon/crest-planner/tree/v0.1.12) (2026-04-27)
 [Full Changelog](https://github.com/danvernon/crest-planner/compare/v0.1.11...v0.1.12) [Previous Releases](https://github.com/danvernon/crest-planner/releases)
 
